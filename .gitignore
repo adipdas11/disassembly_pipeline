@@ -9,8 +9,8 @@ vision_training/realsense_data/
 vision_training/record_data/
 vision_training/train_vision_model/
 vision_training/__pycache__/
-vision_training/*.pt
-vision_training/*.pth
+vision_training/**/*.pt
+vision_training/**/*.pth
 vision_training/*.ckpt
 vision_training/Project 1 (Segmentation)/rfdetr/dataset_rfdetr_seg/
 vision_training/Project 1 (Segmentation)/rfdetr/HDD_Global_Scout-3/
@@ -23,6 +23,7 @@ vision_training/Project 2 (Tool-Screw)/rfdetr/rf-detr-small.pth
 vision_training/Project 3 (Classification)/yolo11/yolo11n-cls.pt
 vision_training/Project 3 (Classification)/yolo11/yolo26n.pt
 vision_training/Project 1 (Segmentation)/rfdetr/rf-detr-seg-medium.pt
+vision_training/Project 1 (Segmentation)/rfdetr/rf-detr-large-2026.pth
 vision_training/**/runs/
 
 # Editor/IDE
