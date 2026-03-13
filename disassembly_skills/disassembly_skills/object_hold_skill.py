@@ -43,6 +43,7 @@ class ObjectHoldSkill(Node):
         self.GRIPPER_OPEN_FORCE_N = 20.0
         self.GRIPPER_CLOSE_FORCE_N = 60.0
         self.TORQUE_THRESHOLD = 3.0
+        self.RETRACT_VELOCITY = 0.05
         
         self.get_logger().info("🚀 Object Hold Skill: Top-Down Cartesian Tactile Mode Active.")
         self.publish_state("IDLE")
@@ -216,10 +217,10 @@ class ObjectHoldSkill(Node):
             f"🚁 Moving to tilted hover pose at "
             f"X: {hover_x:.3f}, Y: {hover_y:.3f}, Z: {hz:.3f}..."
         )
-        if not self.uf850.move_cartesian_to_pose(hover_x, hover_y, hz, qd, velocity=0.08):
-            print("⚠️ Cartesian hover planning failed. Falling back to joint-space MoveIt planning...")
-            if not self.uf850.move_to_pose_robust(hover_x, hover_y, hz, qd, velocity=0.08):
-                print("❌ [ERROR] MoveIt failed to reach hover pose. Aborting.")
+        if not self.uf850.move_to_pose_robust(hover_x, hover_y, hz, qd, velocity=0.2):
+            print("⚠️ Standard MoveIt planning failed. Attempting Cartesian fallback...")
+            if not self.uf850.move_cartesian_to_pose(hover_x, hover_y, hz, qd, velocity=0.2):
+                print("❌ [ERROR] Both planning methods failed to reach hover pose. Aborting.")
                 return False
         if not self.wait_for_arm_settled():
             print("❌ [ERROR] Arm did not settle after hover move.")
@@ -234,23 +235,18 @@ class ObjectHoldSkill(Node):
         # --- STEP 2: CARTESIAN TACTILE DESCENT ---
         if interactive: input("🚀 STEP 2: Cartesian Tactile Descent? [Enter]")
         # The 8-degree tilt is perfectly preserved as the arm drives straight down in world Z!
-        if not self.uf850.move_linear_z_with_torque_stop(0.08, self.TORQUE_THRESHOLD): 
+        if not self.uf850.move_linear_z_with_torque_stop(0.2, self.TORQUE_THRESHOLD): 
             print("❌ [ERROR] Failed to touch down securely. Aborting.")
             return False
         if not self.wait_for_arm_settled():
             print("❌ [ERROR] Arm did not settle after tactile descent.")
             return False
         
-        # Re-activate servo (times out during settle, position controller takes over)
-        print("⏰ Re-activating Servo for retract...")
-        if not self._start_uf_servo():
-            return False
-        time.sleep(1.0)  # Allow controller transition to complete
-
-        # --- STEP 3: CLOSED-LOOP RETRACT (5mm) ---
-        if interactive: input("🚀 STEP 3: Retract 5mm? [Enter]")
-        if not self.uf850.retract_servo_z_closed_loop(0.005):
-            print("❌ [ERROR] Failed to retract 5mm. Aborting.")
+        # --- STEP 3: PLANNED RETRACT (5mm) ---
+        if interactive: input("🚀 STEP 3: Planned Retract 5mm? [Enter]")
+        # Switching to planned retract because Servo gets stuck near the table collision model
+        if not self.uf850.retract_relative_z(0.005, velocity=self.RETRACT_VELOCITY):
+            print("❌ [ERROR] Failed to retract 5mm using planned motion. Aborting.")
             return False
         if not self.wait_for_arm_settled():
             print("❌ [ERROR] Arm did not settle after retract.")

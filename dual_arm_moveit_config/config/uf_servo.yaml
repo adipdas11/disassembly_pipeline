@@ -45,5 +45,5 @@ joint_limit_margin: 0.1
 # Collision checking
 check_collisions: true
 collision_check_rate: 10.0
-self_collision_proximity_threshold: 0.01
-scene_collision_proximity_threshold: 0.02
+self_collision_proximity_threshold: 0.002
+scene_collision_proximity_threshold: 0.005

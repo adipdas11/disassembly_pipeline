@@ -74,6 +74,21 @@ def launch_setup(context, *args, **kwargs):
         output="screen",
     )
 
+    # --- State Management Nodes ---
+    state_manager = Node(
+        package="dual_arm_moveit_config",
+        executable="state_manager.py",
+        name="disassembly_state_manager",
+        output="screen",
+    )
+
+    hold_state_manager = Node(
+        package="dual_arm_moveit_config",
+        executable="object_hold_state.py",
+        name="object_hold_state_manager",
+        output="screen",
+    )
+
     # B. Camera Calibration (Handeye Publisher)
     handeye_publisher = Node(
         package="easy_handeye2",
@@ -200,11 +215,13 @@ def launch_setup(context, *args, **kwargs):
 
     # --- Startup Sequence ---
     actions = [
-        LogInfo(msg="Step 1: Starting TF, Calibration and Control Manager"),
+        LogInfo(msg="Step 1: Starting TF, Calibration, State Managers and Control Manager"),
         static_tf,
         run_rsp_node,
         handeye_publisher,
         robotiq_ft_sensor,
+        state_manager,
+        hold_state_manager,
         ros2_control_node,
     ]
 

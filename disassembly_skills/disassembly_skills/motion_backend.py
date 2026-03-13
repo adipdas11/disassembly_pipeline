@@ -166,6 +166,7 @@ class MotionBackend:
         goal.request.num_planning_attempts = 10
         goal.request.allowed_planning_time = 10.0
         goal.request.max_velocity_scaling_factor = velocity
+        goal.request.max_acceleration_scaling_factor = velocity
 
     def _joint_state_callback(self, msg):
         for i, name in enumerate(msg.name):
@@ -495,7 +496,7 @@ class MotionBackend:
             )
         return success
 
-    def move_linear_z_with_torque_stop(self, speed_mps, threshold_nm, joint_index=4):
+    def move_linear_z_with_torque_stop(self, speed_mps, threshold_nm, joint_index=4, timeout=3600.0):
         """Tactile descent using MoveIt Servo and baseline-subtraction monitoring."""
         if not self._ensure_servo_mode():
             return False
@@ -525,9 +526,10 @@ class MotionBackend:
         twist.header.frame_id = "world_world"
         twist.twist.linear.z = -abs(speed_mps)
         
-        rate = self.node.create_rate(30)  # Match servo publish rate
+        # rate = self.node.create_rate(30) # Redundant with sleep
         start_t = time.time()
-        timeout = 8.0
+        # Increased timeout to 30s as requested (effectively removing the tight limit)
+        timeout = timeout 
         max_travel_m = 0.12
 
         while rclpy.ok() and (time.time() - start_t) < timeout:
@@ -556,12 +558,12 @@ class MotionBackend:
 
             twist.header.stamp = self.node.get_clock().now().to_msg()
             self.servo_pub.publish(twist)
-            rate.sleep()
+            time.sleep(0.033)
         self.stop_immediately()
         self.node.get_logger().error("❌ Tactile descent timed out before contact.")
         return False
     
-    def retract_relative_z(self, distance):
+    def retract_relative_z(self, distance, velocity=0.05):
         """Planned relative lift along the Z-axis."""
         target_link = "xarm5_link5" if self.is_xarm5 else "u1_tool0"
         try:
@@ -571,7 +573,7 @@ class MotionBackend:
             tz = current_tf.transform.translation.z + distance
             q = current_tf.transform.rotation
             q_dict = {'qx': q.x, 'qy': q.y, 'qz': q.z, 'qw': q.w}
-            return self.move_to_pose_robust(tx, ty, tz, q_dict, velocity=0.05)
+            return self.move_to_pose_robust(tx, ty, tz, q_dict, velocity=velocity)
         except Exception as e:
             self.node.get_logger().error(f"Retract TF Error: {e}"); return False
 
