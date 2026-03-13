@@ -496,7 +496,7 @@ class MotionBackend:
             )
         return success
 
-    def move_linear_z_with_torque_stop(self, speed_mps, threshold_nm, joint_index=4, timeout=3600.0):
+    def move_linear_z_with_torque_stop(self, speed_mps, threshold_nm, joint_index=2, timeout=3600.0):
         """Tactile descent using MoveIt Servo and baseline-subtraction monitoring."""
         if not self._ensure_servo_mode():
             return False
