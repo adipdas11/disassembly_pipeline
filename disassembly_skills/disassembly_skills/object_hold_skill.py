@@ -22,7 +22,7 @@ class ObjectHoldSkill(Node):
         self.create_subscription(String, '/vision/agent_state', self.vision_callback, 10)
         
         # --- Central State Managers ---
-        self.hold_status_pub = self.create_publisher(Bool, '/object_hold_status', 10)
+        self.hold_status_pub = self.create_publisher(Bool, '/object_hold_state/is_held', 10)
         self.state_update_pub = self.create_publisher(String, '/robot_state/manip_arm/update', 10)
         
         # 🛑 ADDED: Native Publisher to reset the vision tracker
@@ -40,12 +40,12 @@ class ObjectHoldSkill(Node):
         self.JOINT_GRIPPER = "rg6_l_out"
         self.OPEN_DEG = 35.0
         self.CLOSE_DEG = -35.0
-        self.GRIPPER_OPEN_FORCE_N = 20.0
+        self.GRIPPER_OPEN_FORCE_N = 40.0      # Increased for better release
         self.GRIPPER_CLOSE_FORCE_N = 100.0
         self.TORQUE_THRESHOLD = 3.0
         self.DESCENT_SPEED = 0.09             # Synced with Pickup Skill
         self.RETRACT_VELOCITY = 0.05
-        self.POST_GRASP_RETRACT_SPEED = 0.01  # Safe post-contact lift
+        self.POST_GRASP_RETRACT_SPEED = 0.1  # Safe post-contact lift
         
         self.get_logger().info("🚀 Object Hold Skill: Top-Down Cartesian Tactile Mode Active.")
         self.publish_state("IDLE")
@@ -161,13 +161,17 @@ class ObjectHoldSkill(Node):
 
             if abs(curr - last_pos) < 0.002:
                 stall_timer += 0.1
-                if stall_timer >= 0.5:
+                if stall_timer >= 0.8: # Wait a bit longer for stall detection
                     if is_closing:
-                        self.get_logger().info(f"📦 Grasp Secured: Stalled at {curr:.3f} rad.")
+                        self.get_logger().info(f"✅ Grasp confirmed (Force reached) at {curr:.3f} rad.")
                         return True
                     else:
-                        return False
+                        self.get_logger().warn(f"⚠️ Gripper STUCK at {curr:.3f} rad while trying to open. Retrying with high force...")
+                        # If stuck while opening, try one last push with max force
+                        self.gripper.move_to_joint_positions({self.JOINT_GRIPPER: target_rad}, gripper_force_n=100.0)
+                        stall_timer = -2.0 # Give it 2 more seconds
             else:
+                stall_timer = 0.0
                 stall_timer = 0.0
             
             last_pos = curr
@@ -248,8 +252,13 @@ class ObjectHoldSkill(Node):
 
         # --- STEP 2: CARTESIAN TACTILE DESCENT ---
         if interactive: input("🚀 STEP 2: Cartesian Tactile Descent? [Enter]")
-        # Now uses Joint 3 monitoring with 5x spike detection (15Nm)
-        if not self.uf850.move_linear_z_with_torque_stop(self.DESCENT_SPEED, self.TORQUE_THRESHOLD): 
+        # Standardize: Start servo explicitly before tactile descent
+        print("⏰ Activating Servo for tactile descent...")
+        if not self._start_uf_servo(): return False
+        time.sleep(1.0)
+        
+        # Now uses Joint 5 monitoring (index 4) as requested
+        if not self.uf850.move_linear_z_with_torque_stop(self.DESCENT_SPEED, self.TORQUE_THRESHOLD, joint_index=4): 
             print("❌ [ERROR] Failed to touch down securely. Aborting.")
             return False
         self.wait_for_arm_settled()

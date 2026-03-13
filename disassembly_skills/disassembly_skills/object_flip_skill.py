@@ -27,8 +27,8 @@ class ObjectFlipSkill(Node):
         self.TORQUE_THRESHOLD = 3.0            
         self.DESCENT_SPEED = 0.2              
         self.RETRACT_VELOCITY = 0.5
-        self.GRIPPER_OPEN_FORCE_N = 20.0       # Added for easy config
-        self.GRIPPER_CLOSE_FORCE_N = 100.0      # Increased default to 80N for flips
+        self.GRIPPER_OPEN_FORCE_N = 40.0      
+        self.GRIPPER_CLOSE_FORCE_N = 100.0     
         
         self.is_holding_object = False
         self.create_subscription(Bool, '/object_hold_state/is_held', self.hold_status_callback, 10)
@@ -71,9 +71,35 @@ class ObjectFlipSkill(Node):
             last_pos = curr; time.sleep(0.1)
         return False
 
+    def wait_for_gripper(self, target_deg, timeout=7.0):
+        target_rad = math.radians(target_deg)
+        start_t = time.time(); last_pos = 999.0; stall_timer = 0.0; is_closing = target_deg < 0
+        while rclpy.ok() and (time.time() - start_t) < timeout:
+            curr = self.gripper.current_joint_positions.get(self.JOINT_GRIPPER, 999)
+            if curr == 999: time.sleep(0.1); continue
+            if abs(curr - target_rad) < 0.05: return True
+            if abs(curr - last_pos) < 0.002:
+                stall_timer += 0.1
+                if stall_timer >= 0.8:
+                    if is_closing:
+                        self.get_logger().info(f"✅ Grasp confirmed at {curr:.3f} rad.")
+                        return True
+                    else:
+                        self.get_logger().warn(f"⚠️ Gripper STUCK while opening. Retrying with high force...")
+                        self.gripper.move_to_joint_positions({self.JOINT_GRIPPER: target_rad}, gripper_force_n=100.0)
+                        stall_timer = -2.0
+            else: stall_timer = 0.0
+            last_pos = curr; time.sleep(0.1)
+        return False
+
     def execute_flip(self, interactive=True):
+        # Wait up to 2 seconds for hold message to arrive (ROS sync buffer)
+        sw = time.time()
+        while not self.is_holding_object and (time.time() - sw) < 2.0:
+            time.sleep(0.1)
+
         if not self.is_holding_object:
-            self.get_logger().error("❌ Error: No object held.")
+            self.get_logger().error("❌ Error: No object held. Ensure 'object_hold_state/is_held' is publishing True.")
             return False
 
         self.publish_state("FLIPPING")
@@ -112,7 +138,8 @@ class ObjectFlipSkill(Node):
         time.sleep(1.0)
 
         print(f"⬇️ STEP 3: Tactile Descent (Speed: {self.DESCENT_SPEED}m/s)...")
-        if not self.uf850.move_linear_z_with_torque_stop(self.DESCENT_SPEED, self.TORQUE_THRESHOLD): 
+        # Monitoring Joint 5 (index 4) as requested
+        if not self.uf850.move_linear_z_with_torque_stop(self.DESCENT_SPEED, self.TORQUE_THRESHOLD, joint_index=4): 
             return False
         self.wait_for_arm_settled()
 
@@ -123,14 +150,14 @@ class ObjectFlipSkill(Node):
             {self.JOINT_GRIPPER: math.radians(self.OPEN_DEG)}, 
             gripper_force_n=self.GRIPPER_OPEN_FORCE_N
         ): return False
-        time.sleep(1.0)
+        self.wait_for_gripper(self.OPEN_DEG)
 
         print("🗜️ STEP 5: Re-grasping...")
         if not self.gripper.move_to_joint_positions(
             {self.JOINT_GRIPPER: math.radians(self.CLOSE_DEG)}, 
             gripper_force_n=self.GRIPPER_CLOSE_FORCE_N
         ): return False
-        time.sleep(1.0)
+        self.wait_for_gripper(self.CLOSE_DEG)
         
         self.publish_state("HOLDING")
         print("🎉 FLIP COMPLETE")

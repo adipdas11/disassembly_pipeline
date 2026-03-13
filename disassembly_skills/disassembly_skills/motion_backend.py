@@ -536,12 +536,16 @@ class MotionBackend:
             curr = self.current_joint_efforts.get(joint_name, 0.0)
             spike = abs(curr - baseline)
             
+            # Debug: Throttle print the live spike
+            if int((time.time() - start_t) * 10) % 5 == 0:
+                self.node.get_logger().info(f"📊 Live Spike on {joint_name}: {spike:.3f} Nm", throttle_duration_sec=0.3)
+
             # Blanking period (0.2s) to ignore initial jerk
             if (time.time() - start_t) > 0.2:
-                # User requested 5x the threshold spike (3 * 5 = 15Nm)
-                if spike > (threshold_nm * 5.0):
+                # Reduced multiplier to 2.0x (3.0 * 2.0 = 6Nm). 15Nm was too high to trigger reliably.
+                if spike > (threshold_nm * 2.0):
                     self.stop_immediately()
-                    self.node.get_logger().warn(f"🎯 CONTACT DETECTED: {spike:.3f}Nm spike (Threshold: {threshold_nm*5.0}Nm).")
+                    self.node.get_logger().warn(f"🎯 CONTACT DETECTED: {spike:.3f}Nm spike (Threshold: {threshold_nm*2.0}Nm).")
                     return True
 
             # Removed distance-based abort (max_travel_m) as requested.

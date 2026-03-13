@@ -10,8 +10,8 @@ parameters:
   move_group: manipulator
 transform:
   translation:
-    x: 0.635
-    y: 0.325
+    x: 0.629
+    y: 0.305
     z: 0.51
   rotation:
     x: -0.753

@@ -24,7 +24,7 @@ class FlipDropSkill(Node):
         
         # Interfaces
         self.state_update_pub = self.create_publisher(String, '/robot_state/manip_arm/update', 10)
-        self.hold_status_pub = self.create_publisher(Bool, '/object_hold_status', 10)
+        self.hold_status_pub = self.create_publisher(Bool, '/object_hold_state/is_held', 10)
         self.uf_servo_start_client = self.create_client(Trigger, '/uf_servo_node/start_servo')
         
         # Configuration
@@ -38,7 +38,7 @@ class FlipDropSkill(Node):
         self.DESCENT_SPEED = 0.2              # Reduced for safety
         self.RETRACT_VELOCITY = 0.5            # Synced with Flip Skill
         self.GRIPPER_CLOSE_FORCE_N = 100.0     # Synced with Flip Skill
-        self.GRIPPER_OPEN_FORCE_N = 20.0
+        self.GRIPPER_OPEN_FORCE_N = 40.0
         
         self.get_logger().info("🚀 Flip-Drop Skill: Modernized Production Version.")
 
@@ -78,17 +78,24 @@ class FlipDropSkill(Node):
             last_pos = curr; time.sleep(0.1)
         return False
 
-    def wait_for_gripper(self, target_deg, timeout=5.0):
+    def wait_for_gripper(self, target_deg, timeout=8.0):
         target_rad = math.radians(target_deg)
-        start_t = time.time(); last_pos = 999.0; stall_t = 0.0
+        start_t = time.time(); last_pos = 999.0; stall_timer = 0.0; is_closing = target_deg < 0
         while rclpy.ok() and (time.time() - start_t) < timeout:
             curr = self.gripper.current_joint_positions.get(self.JOINT_GRIPPER, 999)
             if curr == 999: time.sleep(0.1); continue
             if abs(curr - target_rad) < 0.05: return True
             if abs(curr - last_pos) < 0.002:
-                stall_t += 0.1
-                if stall_t >= 0.5 and target_deg < 0: return True
-            else: stall_t = 0.0
+                stall_timer += 0.1
+                if stall_timer >= 0.8:
+                    if is_closing:
+                        self.get_logger().info(f"✅ Grasp confirmed at {curr:.3f} rad.")
+                        return True
+                    else:
+                        self.get_logger().warn(f"⚠️ Gripper STUCK while opening. Retrying with high force...")
+                        self.gripper.move_to_joint_positions({self.JOINT_GRIPPER: target_rad}, gripper_force_n=100.0)
+                        stall_timer = -2.0
+            else: stall_timer = 0.0
             last_pos = curr; time.sleep(0.1)
         return False
 
@@ -144,7 +151,8 @@ class FlipDropSkill(Node):
         if not self._start_uf_servo(): return False
         time.sleep(1.0)
             
-        if not self.uf850.move_linear_z_with_torque_stop(self.DESCENT_SPEED, self.TORQUE_THRESHOLD): return False
+        # Monitoring Joint 5 (index 4) as requested
+        if not self.uf850.move_linear_z_with_torque_stop(self.DESCENT_SPEED, self.TORQUE_THRESHOLD, joint_index=4): return False
         self.wait_for_arm_settled()
         self.uf850.jog_cartesian_servo(0.0, 0.0, 0.005, duration=0.5)
         self.wait_for_arm_settled()
@@ -157,7 +165,6 @@ class FlipDropSkill(Node):
             gripper_force_n=self.GRIPPER_OPEN_FORCE_N
         ): return False
         self.wait_for_gripper(self.OPEN_DEG)
-        time.sleep(1.0)
 
         if not self.gripper.move_to_joint_positions(
             {self.JOINT_GRIPPER: math.radians(self.CLOSE_DEG)},
