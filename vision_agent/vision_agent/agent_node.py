@@ -7,9 +7,33 @@ from collections import deque, OrderedDict
 # =====================================================================
 # 1. ENVIRONMENT SETUP
 # =====================================================================
-# Inject virtual environment path for AI models
-VENV_PATH = '/home/adip/workspace/disassembly_ws/src/vision_training/train_vision_model/.venv/lib/python3.10/site-packages'
-sys.path.insert(0, VENV_PATH)
+# Find the repository root (disassembly_pipeline) robustly
+def find_repo_root(current_path, target_name="disassembly_pipeline"):
+    curr = os.path.abspath(current_path)
+    while curr != os.path.dirname(curr): # Stop at filesystem root
+        if os.path.basename(curr) == target_name:
+            return curr
+        if os.path.exists(os.path.join(curr, target_name)):
+            return os.path.join(curr, target_name)
+        curr = os.path.dirname(curr)
+    return None
+
+WS_ROOT = find_repo_root(__file__)
+
+if WS_ROOT:
+    # Inject virtual environment path for AI models (Standard path)
+    VENV_PATH = os.path.join(WS_ROOT, 'vision_training', 'train_vision_model', '.venv', 'lib', 'python3.10', 'site-packages')
+    if os.path.exists(VENV_PATH):
+        sys.path.insert(0, VENV_PATH)
+    else:
+        # Alt path used in v2
+        VENV_PATH_ALT = os.path.join(WS_ROOT, 'vision_training', '.venv', 'lib', 'python3.10', 'site-packages')
+        if os.path.exists(VENV_PATH_ALT):
+            sys.path.insert(0, VENV_PATH_ALT)
+else:
+    # Hardcoded fallback
+    sys.path.insert(0, '/home/adip/workspace/dev_ws/src/disassembly_pipeline/vision_training/train_vision_model/.venv/lib/python3.10/site-packages')
+    WS_ROOT = '/home/adip/workspace/dev_ws/src/disassembly_pipeline'
 
 import rclpy
 from rclpy.node import Node
@@ -39,9 +63,9 @@ from vision_agent.agents.sniper import SniperAgent
 from vision_agent.agents.referee import RefereeAgent
 
 # --- MODEL PATHS ---
-PATH_SCOUT = "/home/adip/workspace/disassembly_ws/src/vision_training/train_vision_model/project 1 (segmentation)/runs/segment/hdd_scout_run/weights/best.pt"
-PATH_SNIPER = "/home/adip/workspace/disassembly_ws/src/vision_training/train_vision_model/project 2 (keypoint)/runs/pose/hdd_final_run/weights/best.pt"
-PATH_REFEREE = "/home/adip/workspace/disassembly_ws/src/vision_training/train_vision_model/project 3 (classification)/runs/classify/hdd_referee_model/weights/best.pt"
+PATH_SCOUT = os.path.join(WS_ROOT, "vision_training", "train_vision_model", "project 1 (segmentation)", "runs", "segment", "hdd_scout_run", "weights", "best.pt")
+PATH_SNIPER = os.path.join(WS_ROOT, "vision_training", "train_vision_model", "project 2 (keypoint)", "runs", "pose", "hdd_final_run", "weights", "best.pt")
+PATH_REFEREE = os.path.join(WS_ROOT, "vision_training", "train_vision_model", "project 3 (classification)", "runs", "classify", "hdd_referee_model", "weights", "best.pt")
 
 # --- ARUCO ZONE CONFIGURATION ---
 SHAPE_CONFIG = {

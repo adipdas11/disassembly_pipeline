@@ -45,6 +45,9 @@ env/
 venv/
 .env
 .venv
+.claude/
+.claude-flow/
+.swarm/
 
 # ROS 2 / Colcon
 build/

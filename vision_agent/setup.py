@@ -33,6 +33,7 @@ setup(
             # This creates the command 'ros2 run vision_agent 
             'start_vision = vision_agent.agent_node:main',
             'start_vision_rtdetr = vision_agent.agent_node_v2:main',
+            'start_vision_v2 = vision_agent.agent_node_v2:main',
             'detect_workspace = vision_agent.workspace_detector:main',
         ],
     },
