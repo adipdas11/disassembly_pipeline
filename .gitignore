@@ -9,8 +9,8 @@ vision_training/realsense_data/
 vision_training/record_data/
 vision_training/train_vision_model/
 vision_training/__pycache__/
-vision_training/**/*.pt
-vision_training/**/*.pth
+# vision_training/**/*.pt
+# vision_training/**/*.pth
 vision_training/*.ckpt
 vision_training/Project 1 (Segmentation)/rfdetr/dataset_rfdetr_seg/
 vision_training/Project 1 (Segmentation)/rfdetr/HDD_Global_Scout-3/
