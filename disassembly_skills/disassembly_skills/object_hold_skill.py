@@ -41,7 +41,7 @@ class ObjectHoldSkill(Node):
         self.OPEN_DEG = 35.0
         self.CLOSE_DEG = -35.0
         self.GRIPPER_OPEN_FORCE_N = 20.0
-        self.GRIPPER_CLOSE_FORCE_N = 60.0
+        self.GRIPPER_CLOSE_FORCE_N = 100.0
         self.TORQUE_THRESHOLD = 3.0
         self.RETRACT_VELOCITY = 0.05
         

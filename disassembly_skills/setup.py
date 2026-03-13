@@ -30,7 +30,8 @@ setup(
     entry_points={
         'console_scripts': [ 
             'motion_backend = disassembly_skills.motion_backend:main',
-            'object_hold_skill = disassembly_skills.object_hold_skill:main'
+            'object_hold_skill = disassembly_skills.object_hold_skill:main',
+            'object_flip_skill = disassembly_skills.object_flip_skill:main'
         ],
     },
 )
