@@ -26,7 +26,7 @@
     <visual>
       <geometry>
         <mesh
-          filename="file:///home/adip/workspace/disassembly_ws/src/scene_description/meshes/visual/base_link.stl"
+          filename="file:///home/adip/workspace/dev_ws/src/scene_description/meshes/visual/base_link.stl"
           scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
@@ -35,7 +35,7 @@
     <collision>
       <geometry>
         <mesh
-          filename="file:///home/adip/workspace/disassembly_ws/src/scene_description/meshes/visual/base_link.stl"
+          filename="file:///home/adip/workspace/dev_ws/src/scene_description/meshes/visual/base_link.stl"
           scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
