@@ -1,0 +1,56 @@
+# Local instruction / tool files
+AGENTS.md
+CLAUDE.md
+.mcp.json
+mcp*.json
+
+# Large Data Directories
+vision_training/realsense_data/
+vision_training/record_data/
+vision_training/train_vision_model/
+vision_training/__pycache__/
+vision_training/**/*.pt
+vision_training/**/*.pth
+vision_training/**/*.ckpt
+vision_training/Project 1 (Segmentation)/rfdetr/dataset_rfdetr_seg/
+vision_training/Project 1 (Segmentation)/rfdetr/HDD_Global_Scout-3/
+vision_training/Project 2 (Tool-Screw)/rfdetr/dataset_rfdetr_box_640/
+vision_training/Project 1 (Segmentation)/rfdetr/dataset_rfdetr_box_1080
+vision_training/Project 2 (Tool-Screw)/rfdetr/HDD_Local_Sniper-3/
+vision_training/Project 3 (Classification)/yolo11/dataset_cls_split/
+vision_training/Project 3 (Classification)/yolo11/HDD_Process_States-5
+vision_training/Project 2 (Tool-Screw)/rfdetr/rf-detr-small.pth
+vision_training/Project 3 (Classification)/yolo11/yolo11n-cls.pt
+vision_training/Project 3 (Classification)/yolo11/yolo26n.pt
+vision_training/Project 1 (Segmentation)/rfdetr/rf-detr-seg-medium.pt
+vision_training/**/runs/
+
+# Editor/IDE
+.vscode/
+.claude/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.swp
+*~
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv
+
+# ROS 2 / Colcon
+build/
+install/
+log/
+*.log
+
+# API Keys
+**/api_key.txt

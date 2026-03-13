@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<robot name="screwdriver_robot"
+       xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ===================== -->
+  <!-- Arguments              -->
+  <!-- ===================== -->
+
+  <xacro:arg name="prefix"        default="screwdriver_"/>
+  <xacro:arg name="mesh_pkg"      default="screwdriver_description"/>
+  <xacro:arg name="mesh_subdir"   default="meshes/visual"/>
+  <xacro:arg name="color_primary" default="0.75 0.75 0.78 1.0"/>
+
+
+  <!-- ===================== -->
+  <!-- Include prefixed macro -->
+  <!-- ===================== -->
+
+  <xacro:include
+    filename="$(find screwdriver_description)/urdf/screwdriver_prefixed.urdf.xacro"/>
+
+
+  <!-- ===================== -->
+  <!-- Instantiate tool       -->
+  <!-- ===================== -->
+
+  <xacro:screwdriver_robot
+    prefix="$(arg prefix)"
+    mesh_pkg="$(arg mesh_pkg)"
+    mesh_subdir="$(arg mesh_subdir)"
+    color_primary="$(arg color_primary)"/>
+
+</robot>

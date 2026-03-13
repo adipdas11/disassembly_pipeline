@@ -1,0 +1,61 @@
+<?xml version="1.0" ?>
+<DualArmTrajectoryConfig>
+  <AICOSolver Name="Uf850AICOSolver" />
+
+  <UnconstrainedTimeIndexedProblem Name="Uf850TrajectoryProblem">
+    <PlanningScene>
+      <Scene>
+        <JointGroup>uf_arm</JointGroup>
+        <URDF>package://dual_arm_moveit_config/config/dual_arm_world.urdf</URDF>
+        <SRDF>package://dual_arm_moveit_config/config/dual_arm_world.srdf</SRDF>
+        <CollisionScene>
+          <CollisionSceneFCLLatest Name="Uf850CollisionScene"/>
+        </CollisionScene>
+        <AlwaysUpdateCollisionScene>1</AlwaysUpdateCollisionScene>
+      </Scene>
+    </PlanningScene>
+
+    <Maps>
+      <EffFrame Name="UF850_TCP">
+        <EndEffector>
+          <Frame Link="rg6_hand_tcp" LinkOffset="0 0 0 0 0 0 1"/>
+        </EndEffector>
+      </EffFrame>
+
+      <JointLimit Name="Limits"/>
+
+      <JointPose Name="Posture">
+        <JointRef>0 0 -1.5708 0 -1.5708 0</JointRef>
+      </JointPose>
+
+      <JointVelocityLimit
+        Name="VelocityLimit"
+        dt="0.05"
+        SafePercentage="0.05"
+        MaximumJointVelocity="0.5"/>
+
+      <SmoothCollisionDistance Name="Collision">
+        <WorldMargin>0.15</WorldMargin>
+        <CheckSelfCollision>1</CheckSelfCollision>
+        <Linear>1</Linear>
+      </SmoothCollisionDistance>
+    </Maps>
+
+    <Cost>
+      <Task Task="UF850_TCP" Rho="2e2"/>
+      <Task Task="Collision" Rho="2e3"/>
+      <Task Task="Posture" Rho="5e1"/>
+      <Task Task="VelocityLimit" Rho="2e2"/>
+      <Task Task="Limits" Rho="5e1"/>
+    </Cost>
+
+    <T>120</T>
+    <tau>0.05</tau>
+    <Qrate>1e-6</Qrate>
+    <Hrate>1</Hrate>
+    <Wrate>1e3</Wrate>
+
+    <StartState>0 0 -1.5708 0 -1.5708 0</StartState>
+    <W>1 1 1 1 1 1</W>
+  </UnconstrainedTimeIndexedProblem>
+</DualArmTrajectoryConfig>

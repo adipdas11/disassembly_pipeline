@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<robot name="u850_mounting_plate">
+
+  <!-- Simple material; single instance so no need to prefix -->
+  <material name="silver">
+    <color rgba="0.7 0.7 0.7 1.0"/>
+  </material>
+
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0.461 -0.2925000000000015 0.8427" rpy="0 0 0"/>
+      <mass value="0.9139715811119455"/>
+      <inertia ixx="0.006487" iyy="0.003277" izz="0.009749"
+               ixy="-0.0" iyz="0.0" ixz="-0.0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://u850_mounting_plate_description/meshes/visual/base_link.stl"
+              scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://u850_mounting_plate_description/meshes/visual/base_link.stl"
+              scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+</robot>

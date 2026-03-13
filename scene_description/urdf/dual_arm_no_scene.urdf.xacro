@@ -1,0 +1,79 @@
+<?xml version="1.0"?>
+<robot name="dual_arm_world"
+       xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ================================================= -->
+  <!-- Arguments                                         -->
+  <!-- ================================================= -->
+
+  <!-- World -->
+  <xacro:arg name="world_prefix"   default="world_"/>
+
+  <!-- xArm5 on slider -->
+  <xacro:arg name="slider_prefix"  default="slider_"/>
+  <xacro:arg name="xarm_prefix"    default="xarm5_"/>
+  <xacro:arg name="tool_prefix"    default="screwdriver_"/>
+
+  <!-- UF850 + RG6 -->
+  <xacro:arg name="mount_prefix"   default="mount_"/>
+  <xacro:arg name="uf850_prefix"   default="u1_"/>
+  <xacro:arg name="rg6_prefix"     default="rg6_"/>
+
+
+  <!-- ================================================= -->
+  <!-- Includes                                          -->
+  <!-- ================================================= -->
+
+  <!-- xArm5 + slider + screwdriver -->
+  <xacro:include
+    filename="$(find xarm5_description)/urdf/xarm5_slider_macro.urdf.xacro"/>
+
+  <!-- UF850 + RG6 -->
+  <xacro:include
+    filename="$(find uf850_description)/urdf/uf850_rg6_macro.urdf.xacro"/>
+
+
+  <!-- ================================================= -->
+  <!-- World root                                        -->
+  <!-- ================================================= -->
+
+  <!-- Dummy world link -->
+  <link name="$(arg world_prefix)world"/>
+
+
+  <!-- ================================================= -->
+  <!-- Instantiate Robots                                -->
+  <!-- ================================================= -->
+
+  <!-- xArm5 on linear slider -->
+  <xacro:xarm5_slider
+    slider_prefix="$(arg slider_prefix)"
+    arm_prefix="$(arg xarm_prefix)"
+    tool_prefix="$(arg tool_prefix)"/>
+
+  <!-- UF850 with RG6 -->
+  <xacro:uf850_rg6
+    mount_prefix="$(arg mount_prefix)"
+    arm_prefix="$(arg uf850_prefix)"
+    gripper_prefix="$(arg rg6_prefix)"/>
+
+
+  <!-- ================================================= -->
+  <!-- Attach robots to world                            -->
+  <!-- ================================================= -->
+
+  <!-- World → xArm5 slider -->
+  <joint name="world_to_xarm5_slider" type="fixed">
+    <parent link="$(arg world_prefix)world"/>
+    <child  link="$(arg slider_prefix)base_link"/>
+    <origin xyz="0.0 0.0 0.0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- World → UF850 mount -->
+  <joint name="world_to_uf850" type="fixed">
+    <parent link="$(arg world_prefix)world"/>
+    <child  link="$(arg mount_prefix)base_link"/>
+    <origin xyz="0.461 -0.292 0.837" rpy="0 0 0"/>
+  </joint>
+
+</robot>

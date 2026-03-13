@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot name="dual_arm_disassembly_cell">
+    <virtual_joint name="world_joint" type="fixed" parent_frame="world_frame" child_link="world_world"/>
+    
+    <group name="xarm_arm">
+        <chain base_link="xarm5_base_link" tip_link="screwdriver_tcp"/>
+    </group>
+
+    <group name="uf_arm">
+        <chain base_link="u1_base_link" tip_link="rg6_hand_tcp"/>
+    </group>
+
+    <group name="rg6_gripper">
+        <joint name="rg6_l_out"/>
+    </group>
+
+    <group name="slider">
+        <joint name="slider_slider_joint"/>
+    </group>
+
+    <group name="dual_arms">
+        <group name="xarm_arm"/>
+        <group name="uf_arm"/>
+        <group name="rg6_gripper"/>
+        <group name="slider"/> </group>
+
+    <group name="xarm_on_rail">
+        <group name="xarm_arm"/> 
+        <joint name="slider_slider_joint"/>
+    </group>
+
+    <end_effector name="rg6_eef" parent_link="u1_tool0" group="rg6_gripper"/>
+
+
+    <group_state name="home" group="dual_arms">
+        <joint name="xarm5_joint1" value="0"/>
+        <joint name="xarm5_joint2" value="0"/>
+        <joint name="xarm5_joint3" value="0"/>
+        <joint name="xarm5_joint4" value="-1.5708"/> 
+        <joint name="xarm5_joint5" value="0"/>
+        
+        <joint name="u1_joint1" value="0"/>
+        <joint name="u1_joint2" value="0"/>
+        <joint name="u1_joint3" value="0"/>
+        <joint name="u1_joint4" value="0"/>
+        <joint name="u1_joint5" value="1.5708"/> 
+        <joint name="u1_joint6" value="0"/>
+
+        <joint name="rg6_l_out" value="0"/>
+        <joint name="slider_slider_joint" value="0"/>
+    </group_state>
+
+    <group_state name="start" group="dual_arms">
+        <joint name="xarm5_joint1" value="0"/>
+        <joint name="xarm5_joint2" value="0"/>
+        <joint name="xarm5_joint3" value="-1.5708"/>
+        <joint name="xarm5_joint4" value="1.5708"/> 
+        <joint name="xarm5_joint5" value="0"/>
+        
+        <joint name="u1_joint1" value="0"/>
+        <joint name="u1_joint2" value="0"/>
+        <joint name="u1_joint3" value="-1.5708"/>
+        <joint name="u1_joint4" value="0"/>
+        <joint name="u1_joint5" value="-1.5708"/> 
+        <joint name="u1_joint6" value="0"/>
+
+        <joint name="rg6_l_out" value="0"/>
+        <joint name="slider_slider_joint" value="0"/>
+    </group_state>
+
+    <group_state name="open" group="rg6_gripper">
+        <joint name="rg6_l_out" value="0.6"/> 
+    </group_state>
+    
+    <group_state name="close" group="rg6_gripper">
+        <joint name="rg6_l_out" value="-0.6"/> 
+    </group_state>
+
+    <group_state name="home" group="slider">
+        <joint name="slider_slider_joint" value="0.0"/>
+    </group_state>
+
+
+    <disable_collisions link1="rg6_base_link" link2="rg6_l_out" reason="Internal"/>
+    <disable_collisions link1="rg6_base_link" link2="rg6_r_out" reason="Internal"/>
+    <disable_collisions link1="rg6_base_link" link2="rg6_g_main" reason="Internal"/>
+    <disable_collisions link1="rg6_l_out"     link2="rg6_l_tip" reason="Internal"/>
+    <disable_collisions link1="rg6_l_out"     link2="rg6_l_inner" reason="Internal"/>
+    <disable_collisions link1="rg6_r_out"     link2="rg6_r_tip" reason="Internal"/>
+    <disable_collisions link1="rg6_r_out"     link2="rg6_r_inner" reason="Internal"/>
+    <disable_collisions link1="rg6_l_inner"   link2="rg6_r_inner" reason="Internal"/>
+    <disable_collisions link1="rg6_l_tip"     link2="rg6_r_tip" reason="Internal"/>
+    <disable_collisions link1="rg6_l_tip"     link2="rg6_l_inner" reason="Internal"/>
+    <disable_collisions link1="rg6_r_tip"     link2="rg6_r_inner" reason="Internal"/>
+    <disable_collisions link1="rg6_g_main"    link2="rg6_l_inner" reason="Internal"/>
+    <disable_collisions link1="rg6_g_main"    link2="rg6_r_inner" reason="Internal"/>
+    <disable_collisions link1="rg6_g_main" link2="rg6_l_out" reason="Adjacent"/>
+    <disable_collisions link1="rg6_g_main" link2="rg6_r_out" reason="Adjacent"/>
+    <disable_collisions link1="rg6_g_main" link2="rg6_l_inner" reason="Adjacent"/>
+    <disable_collisions link1="rg6_g_main" link2="rg6_r_inner" reason="Adjacent"/>
+    
+    <disable_collisions link1="rg6_l_out" link2="rg6_l_tip" reason="Adjacent"/>
+    <disable_collisions link1="rg6_r_out" link2="rg6_r_tip" reason="Adjacent"/>
+    
+    <disable_collisions link1="rg6_l_inner" link2="rg6_l_tip" reason="Default"/>
+    <disable_collisions link1="rg6_r_inner" link2="rg6_r_tip" reason="Default"/>
+    <disable_collisions link1="rg6_l_inner" link2="rg6_r_inner" reason="Default"/>
+    
+    <disable_collisions link1="rg6_l_out" link2="rg6_r_out" reason="Default"/>
+
+    <disable_collisions link1="xarm5_tool0" link2="screwdriver_base_link" reason="Mounted"/>
+    <disable_collisions link1="xarm5_link5" link2="screwdriver_base_link" reason="Adjacent"/>
+    <disable_collisions link1="u1_tool0"    link2="rg6_base_link" reason="Mounted"/>
+    <disable_collisions link1="u1_link6"    link2="rg6_base_link" reason="Adjacent"/>
+
+    <disable_collisions link1="xarm5_base_link" link2="xarm5_link1" reason="Adjacent"/>
+    <disable_collisions link1="xarm5_link1"     link2="xarm5_link2" reason="Adjacent"/>
+    <disable_collisions link1="xarm5_link2"     link2="xarm5_link3" reason="Adjacent"/>
+    <disable_collisions link1="xarm5_link3"     link2="xarm5_link4" reason="Adjacent"/>
+    <disable_collisions link1="xarm5_link4"     link2="xarm5_link5" reason="Adjacent"/>
+    <disable_collisions link1="xarm5_link5"     link2="xarm5_tool0" reason="Adjacent"/>
+
+    <disable_collisions link1="u1_base_link" link2="u1_link1" reason="Adjacent"/>
+    <disable_collisions link1="u1_link1"     link2="u1_link2" reason="Adjacent"/>
+    <disable_collisions link1="u1_link2"     link2="u1_link3" reason="Adjacent"/>
+    <disable_collisions link1="u1_link3"     link2="u1_link4" reason="Adjacent"/>
+    <disable_collisions link1="u1_link4"     link2="u1_link5" reason="Adjacent"/>
+    <disable_collisions link1="u1_link5"     link2="u1_link6" reason="Adjacent"/>
+    <disable_collisions link1="u1_link6"     link2="u1_tool0" reason="Adjacent"/>
+
+    <disable_collisions link1="slider_base_link" link2="world_world" reason="Adjacent"/>
+    <disable_collisions link1="mount_base_link" link2="world_world" reason="Adjacent"/>
+    <disable_collisions link1="slider_base_link" link2="slider_xarm5_mount_1" reason="Adjacent"/>
+    <disable_collisions link1="slider_xarm5_mount_1" link2="xarm5_base_link" reason="Adjacent"/>
+    <disable_collisions link1="mount_base_link" link2="u1_base_link" reason="Adjacent"/>
+
+    <disable_collisions link1="sd1_base_link" link2="world_world" reason="Adjacent"/>
+
+    <disable_collisions link1="sd1_base_link" link2="xarm5_base_link" reason="Adjacent"/>
+    <disable_collisions link1="sd1_base_link" link2="xarm5_link1" reason="Default State"/>
+    
+    <disable_collisions link1="sd1_base_link" link2="u1_base_link" reason="Adjacent"/>
+    <disable_collisions link1="sd1_base_link" link2="u1_link1" reason="Default State"/>
+
+    <disable_collisions link1="sd1_base_link" link2="mount_base_link" reason="Adjacent"/>
+    <disable_collisions link1="sd1_base_link" link2="slider_base_link" reason="Adjacent"/>
+    <disable_collisions link1="sd1_base_link" link2="slider_xarm5_mount_1" reason="Default State"/>
+
+    <disable_collisions link1="slider_base_link" link2="slider_xarm5_mount_1" reason="Adjacent"/>
+
+    <disable_collisions link1="slider_xarm5_mount_1" link2="xarm5_base_link" reason="Adjacent"/>
+    <disable_collisions link1="slider_xarm5_mount_1" link2="xarm5_link1" reason="Never"/>
+
+    <disable_collisions link1="ft_ft300_sensor" link2="xarm5_tool0" reason="Mounted"/>
+    <disable_collisions link1="ft_ft300_sensor" link2="xarm5_link5" reason="Adjacent"/>
+
+    <disable_collisions link1="ft_ft300_sensor" link2="screwdriver_base_link" reason="Mounted"/>
+
+    <disable_collisions link1="ft_ft300_mounting_plate" link2="xarm5_link5" reason="Adjacent"/>
+    <disable_collisions link1="ft_ft300_mounting_plate" link2="xarm5_tool0" reason="Adjacent"/>
+    <disable_collisions link1="ft_ft300_mounting_plate" link2="ft_ft300_sensor" reason="Adjacent"/>
+    <disable_collisions link1="ft_ft300_mounting_plate" link2="screwdriver_base_link" reason="Never"/>
+</robot>

@@ -1,0 +1,45 @@
+moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
+
+moveit_simple_controller_manager:
+  controller_names:
+    - xarm_controller
+    - uf_controller
+    - rg6_controller
+    - slider_controller
+
+  xarm_controller:
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - xarm5_joint1
+      - xarm5_joint2
+      - xarm5_joint3
+      - xarm5_joint4
+      - xarm5_joint5
+
+  uf_controller:
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - u1_joint1
+      - u1_joint2
+      - u1_joint3
+      - u1_joint4
+      - u1_joint5
+      - u1_joint6
+
+  rg6_controller:
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - rg6_l_out
+
+  slider_controller:
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - slider_slider_joint

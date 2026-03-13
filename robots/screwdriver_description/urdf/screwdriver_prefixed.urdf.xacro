@@ -1,0 +1,84 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ================================================= -->
+  <!-- Macro: screwdriver_robot                         -->
+  <!-- Prefixed, minimal screwdriver body + TCP         -->
+  <!-- ================================================= -->
+  <!-- params:
+       prefix
+       mesh_pkg
+       mesh_subdir
+       color_primary
+  -->
+  <xacro:macro name="screwdriver_robot"
+               params="
+                 prefix
+                 mesh_pkg:='screwdriver_description'
+                 mesh_subdir:='meshes/visual'
+                 color_primary:='0.75 0.75 0.78 1.0'
+               ">
+
+    <!-- Mesh path -->
+    <xacro:property name="mesh_prefix"
+                    value="package://${mesh_pkg}/${mesh_subdir}"/>
+
+    <!-- Prefixed material -->
+    <material name="${prefix}mat_primary">
+      <color rgba="${color_primary}"/>
+    </material>
+
+    <!-- ===================== -->
+    <!-- Base link              -->
+    <!-- ===================== -->
+    <link name="${prefix}base_link">
+      <inertial>
+        <origin
+          xyz="0.0010808014887289184 0.007507986594187236 -0.05921266535363922"
+          rpy="0 0 0"/>
+        <mass value="2.9252936726647953"/>
+        <inertia
+          ixx="0.008232"
+          iyy="0.00804"
+          izz="0.00213"
+          ixy="0.000208"
+          iyz="0.00098"
+          ixz="-0.000486"/>
+      </inertial>
+
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh
+            filename="${mesh_prefix}/base_link.stl"
+            scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="${prefix}mat_primary"/>
+      </visual>
+
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh
+            filename="${mesh_prefix}/base_link.stl"
+            scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- ===================== -->
+    <!-- TCP link               -->
+    <!-- ===================== -->
+    <link name="${prefix}tcp"/>
+
+    <!-- Base → TCP -->
+    <joint name="${prefix}base_to_tcp" type="fixed">
+      <!-- TCP is 0.192 m along +Z of screwdriver -->
+      <origin xyz="0 0 -0.192" rpy="0 0 0"/>
+      <parent link="${prefix}base_link"/>
+      <child  link="${prefix}tcp"/>
+    </joint>
+
+  </xacro:macro>
+
+</robot>

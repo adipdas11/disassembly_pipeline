@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<robot name="uf850_mounting_plate_prefab" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Macro with prefix param -->
+  <xacro:macro name="uf850_mounting_plate" params="prefix:= ''">
+
+    <!-- Prefixed material -->
+    <material name="${prefix}silver">
+      <color rgba="0.7 0.7 0.7 1.0"/>
+    </material>
+
+    <link name="${prefix}base_link">
+      <inertial>
+        <origin xyz="0.4512558634182436 0.7649880658756126 0.8977041647656298" rpy="0 0 0"/>
+        <mass value="0.9139715811119455"/>
+        <inertia ixx="0.006487" iyy="0.003277" izz="0.009749"
+                 ixy="-0.0" iyz="0.0" ixz="-0.0"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://uf850_mount_description/meshes/visual/base_link.stl"
+                scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="${prefix}silver"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://uf850_mount_description/meshes/visual/base_link.stl"
+                scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+  </xacro:macro>
+
+</robot>

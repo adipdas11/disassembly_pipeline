@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:include
+    filename="$(find robotiq_ft_sensor_description)/urdf/robotiq_ft300.urdf.xacro"/>
+
+  <!-- Adapter macro -->
+  <xacro:macro name="robotiq_ft300_on_tool"
+               params="parent tf_prefix *origin">
+
+    <!-- TEMPORARY alias so macro does not break -->
+    <link name="${tf_prefix}${parent}"/>
+
+    <xacro:robotiq_ft300
+      parent="${parent}"
+      tf_prefix="${tf_prefix}">
+      <xacro:insert_block name="origin"/>
+    </xacro:robotiq_ft300>
+
+    <!-- Weld alias to real parent -->
+    <joint name="${tf_prefix}parent_alias_fix" type="fixed">
+      <parent link="${parent}"/>
+      <child  link="${tf_prefix}${parent}"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+  </xacro:macro>
+
+</robot>

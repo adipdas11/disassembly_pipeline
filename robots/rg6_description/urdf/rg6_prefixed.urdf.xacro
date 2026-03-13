@@ -1,0 +1,231 @@
+<?xml version="1.0"?>
+<robot name="rg6_robot_prefab" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="rg6_robot" params="
+      prefix
+      mesh_pkg:='rg6_description'
+      mesh_subdir:='meshes/visual'
+      color_primary:='0.75 0.75 0.78 1.0'
+      color_secondary:='0.60 0.60 0.65 1.0'
+  ">
+    <xacro:property name="mesh_prefix" value="package://${mesh_pkg}/${mesh_subdir}"/>
+
+    <!-- Prefix-scoped materials -->
+    <material name="${prefix}mat_primary"><color rgba="${color_primary}"/></material>
+    <material name="${prefix}mat_secondary"><color rgba="${color_secondary}"/></material>
+
+    <!-- ================= base_link ================= -->
+    <link name="${prefix}base_link">
+      <inertial>
+        <!-- rpy reset to zero; off-diagonals zeroed -->
+        <origin xyz="-0.00030179080386336 -0.00047670368310389 0.020678912231015475" rpy="0 0 0"/>
+        <mass value="0.7592453895368185"/>
+        <inertia ixx="0.000452" iyy="0.000705" izz="0.000689" ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="3.14 0 -1.57"/>
+        <geometry><mesh filename="${mesh_prefix}/base_link.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="${prefix}mat_primary"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="3.14 0 -1.57"/>
+        <geometry><mesh filename="${mesh_prefix}/base_link.stl" scale="0.001 0.001 0.001"/></geometry>
+      </collision>
+    </link>
+
+    <!-- ================= g_main ================= -->
+    <link name="${prefix}g_main">
+      <inertial>
+        <origin xyz="0.031843851343412694 -0.00006562152034605188 0.0402561266087614" rpy="0 0 0"/>
+        <mass value="2.1746665575894286"/>
+        <inertia ixx="0.003297" iyy="0.00361" izz="0.00105" ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+      <visual>
+        <origin xyz="0.031849 -1e-06 -0.04953" rpy="0 0 0"/>
+        <geometry><mesh filename="${mesh_prefix}/g_main.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="${prefix}mat_primary"/>
+      </visual>
+      <collision>
+        <origin xyz="0.031849 -1e-06 -0.04953" rpy="0 0 0"/>
+        <geometry><mesh filename="${mesh_prefix}/g_main.stl" scale="0.001 0.001 0.001"/></geometry>
+      </collision>
+    </link>
+
+    <!-- ================= l_out ================= -->
+    <link name="${prefix}l_out">
+      <inertial>
+        <origin xyz="0.010442859349590227 -0.012799625869821 0.012792983853972317" rpy="0 0 0"/>
+        <mass value="0.24195762212403002"/>
+        <inertia ixx="0.00011" iyy="0.00016" izz="0.000076" ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+      <visual>
+        <origin xyz="-0.023851 -0.012801 -0.13453" rpy="0 0 0"/>
+        <geometry><mesh filename="${mesh_prefix}/l_out.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="${prefix}mat_primary"/>
+      </visual>
+      <collision>
+        <origin xyz="-0.023851 -0.012801 -0.13453" rpy="0 0 0"/>
+        <geometry><mesh filename="${mesh_prefix}/l_out.stl" scale="0.001 0.001 0.001"/></geometry>
+      </collision>
+    </link>
+
+    <!-- ================= r_out ================= -->
+    <link name="${prefix}r_out">
+      <inertial>
+        <origin xyz="-0.010522665986501832 -0.012799489922871823 0.012809246687502496" rpy="0 0 0"/>
+        <mass value="0.24195762035711757"/>
+        <inertia ixx="0.00011" iyy="0.00016" izz="0.000076" ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+      <visual>
+        <origin xyz="0.023749 -0.012801 -0.13453" rpy="0 0 0"/>
+        <geometry><mesh filename="${mesh_prefix}/r_out.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="${prefix}mat_primary"/>
+      </visual>
+      <collision>
+        <origin xyz="0.023749 -0.012801 -0.13453" rpy="0 0 0"/>
+        <geometry><mesh filename="${mesh_prefix}/r_out.stl" scale="0.001 0.001 0.001"/></geometry>
+      </collision>
+    </link>
+
+    <!-- ================= l_tip ================= -->
+    <link name="${prefix}l_tip">
+      <inertial>
+        <origin xyz="-0.01379426979129901 0.012430443916766657 0.03303967984911002" rpy="0 0 0"/>
+        <mass value="0.13426652162693567"/>
+        <inertia ixx="0.000056" iyy="0.000059" izz="0.000013" ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+      <visual>
+        <origin xyz="-0.071235 0.012499 -0.19895" rpy="0 0 0"/>
+        <geometry><mesh filename="${mesh_prefix}/l_tip.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="${prefix}mat_primary"/>
+      </visual>
+      <collision>
+        <origin xyz="-0.071235 0.012499 -0.19895" rpy="0 0 0"/>
+        <geometry><mesh filename="${mesh_prefix}/l_tip.stl" scale="0.001 0.001 0.001"/></geometry>
+      </collision>
+    </link>
+
+    <!-- ================= r_tip ================= -->
+    <link name="${prefix}r_tip">
+      <inertial>
+        <origin xyz="0.01379460286375201 0.012599371946431372 0.03303919214417522" rpy="0 0 0"/>
+        <mass value="0.13426652162693592"/>
+        <inertia ixx="0.000056" iyy="0.000059" izz="0.000013" ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+      <visual>
+        <origin xyz="0.071133 0.012499 -0.199024" rpy="0 0 0"/>
+        <geometry><mesh filename="${mesh_prefix}/r_tip.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="${prefix}mat_primary"/>
+      </visual>
+      <collision>
+        <origin xyz="0.071133 0.012499 -0.199024" rpy="0 0 0"/>
+        <geometry><mesh filename="${mesh_prefix}/r_tip.stl" scale="0.001 0.001 0.001"/></geometry>
+      </collision>
+    </link>
+
+    <!-- ================= l_inner ================= -->
+    <link name="${prefix}l_inner">
+      <inertial>
+        <origin xyz="0.021220873634115123 -0.00019955790008889003 0.02884270588361451" rpy="0 0 0"/>
+        <mass value="0.0502402669834145"/>
+        <inertia ixx="0.000034" iyy="0.000046" izz="0.000020" ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+      <visual>
+        <origin xyz="-0.010551 -0.000101 -0.15763" rpy="0 0 0"/>
+        <geometry><mesh filename="${mesh_prefix}/l_inner.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="${prefix}mat_primary"/>
+      </visual>
+      <collision>
+        <origin xyz="-0.010551 -0.000101 -0.15763" rpy="0 0 0"/>
+        <geometry><mesh filename="${mesh_prefix}/l_inner.stl" scale="0.001 0.001 0.001"/></geometry>
+      </collision>
+    </link>
+
+    <!-- ================= r_inner ================= -->
+    <link name="${prefix}r_inner">
+      <inertial>
+        <origin xyz="-0.021275767636285234 -0.00019955790008339296 0.02887567083082221" rpy="0 0 0"/>
+        <mass value="0.05024026698344974"/>
+        <inertia ixx="0.000034" iyy="0.000046" izz="0.000020" ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+      <visual>
+        <origin xyz="0.010449 -0.000101 -0.15763" rpy="0 0 0"/>
+        <geometry><mesh filename="${mesh_prefix}/r_inner.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="${prefix}mat_primary"/>
+      </visual>
+      <collision>
+        <origin xyz="0.010449 -0.000101 -0.15763" rpy="0 0 0"/>
+        <geometry><mesh filename="${mesh_prefix}/r_inner.stl" scale="0.001 0.001 0.001"/></geometry>
+      </collision>
+    </link>
+
+    <!-- ================= joints ================= -->
+    <joint name="${prefix}g_main" type="fixed">
+      <origin xyz="-0.031849 1e-06 0.04953" rpy="0 0 0"/>
+      <parent link="${prefix}base_link"/>
+      <child  link="${prefix}g_main"/>
+    </joint>
+
+    <joint name="${prefix}l_out" type="revolute">
+      <origin xyz="0.0557 0.0128 0.085" rpy="0 0 0"/>
+      <parent link="${prefix}g_main"/>
+      <child  link="${prefix}l_out"/>
+      <axis xyz="0 1 0"/>
+      <limit upper="0.610865" lower="-0.75" effort="100" velocity="100"/>
+    </joint>
+
+    <joint name="${prefix}r_out" type="revolute">
+      <origin xyz="0.0081 0.0128 0.085" rpy="0 0 0"/>
+      <parent link="${prefix}g_main"/>
+      <child  link="${prefix}r_out"/>
+      <axis xyz="0 1 0"/>
+      <limit upper="0.523599" lower="-0.610865" effort="100" velocity="100"/>
+      <mimic joint="${prefix}l_out" multiplier="-1"/>
+    </joint>
+
+    <joint name="${prefix}l_tip" type="revolute">
+      <origin xyz="0.047384 -0.0253 0.06442" rpy="0 0 0"/>
+      <parent link="${prefix}l_out"/>
+      <child  link="${prefix}l_tip"/>
+      <axis xyz="0 -1 0"/>
+      <limit upper="0.610865" lower="-0.523599" effort="100" velocity="100"/>
+      <mimic joint="${prefix}l_out" multiplier="1"/>
+    </joint>
+
+    <joint name="${prefix}r_tip" type="revolute">
+      <origin xyz="-0.047384 -0.0253 0.064494" rpy="0 0 0"/>
+      <parent link="${prefix}r_out"/>
+      <child  link="${prefix}r_tip"/>
+      <axis xyz="0 -1 0"/>
+      <limit upper="0.523599" lower="-0.610865" effort="100" velocity="100"/>
+      <mimic joint="${prefix}l_out" multiplier="-1"/>
+    </joint>
+
+    <joint name="${prefix}l_passive" type="revolute">
+      <origin xyz="0.0424 0.0001 0.1081" rpy="0 0 0"/>
+      <parent link="${prefix}g_main"/>
+      <child  link="${prefix}l_inner"/>
+      <axis xyz="0 -1 0"/>
+      <limit upper="0.523599" lower="-0.610865" effort="100" velocity="100"/>
+      <mimic joint="${prefix}l_out" multiplier="-1"/>
+    </joint>
+
+    <joint name="${prefix}r_passive" type="revolute">
+      <origin xyz="0.0214 0.0001 0.1081" rpy="0 0 0"/>
+      <parent link="${prefix}g_main"/>
+      <child  link="${prefix}r_inner"/>
+      <axis xyz="0 1 0"/>
+      <limit upper="0.523599" lower="-0.610865" effort="100" velocity="100"/>
+      <mimic joint="${prefix}l_out" multiplier="-1"/>
+    </joint>
+
+    <!-- TCP frame -->
+    <link name="${prefix}hand_tcp"/>
+    <joint name="${prefix}hand_tcp_joint" type="fixed">
+      <origin xyz="0.036 0 0.21" rpy="0 0 0"/>
+      <parent link="${prefix}g_main"/>
+      <child  link="${prefix}hand_tcp"/>
+    </joint>
+
+  </xacro:macro>
+</robot>

@@ -1,0 +1,99 @@
+<?xml version="1.0"?>
+<robot name="dual_arm_disassembly_cell"
+       xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ================================================= -->
+  <!-- Arguments                                         -->
+  <!-- ================================================= -->
+
+  <!-- Scene -->
+  <xacro:arg name="scene_prefix"    default="sd1_"/>
+  <xacro:arg name="scene_mesh_pkg"  default="scene_description"/>
+  <xacro:arg name="scene_mesh_dir"  default="meshes/visual"/>
+  <xacro:arg name="scene_color"     default="0.6 0.6 0.6 1.0"/>
+
+  <!-- xArm5 on slider -->
+  <xacro:arg name="slider_prefix"   default="slider_"/>
+  <xacro:arg name="xarm_prefix"     default="xarm5_"/>
+  <xacro:arg name="tool_prefix"     default="screwdriver_"/>
+
+  <!-- UF850 + RG6 -->
+  <xacro:arg name="mount_prefix"    default="mount_"/>
+  <xacro:arg name="uf850_prefix"    default="u1_"/>
+  <xacro:arg name="rg6_prefix"      default="rg6_"/>
+
+
+  <!-- ================================================= -->
+  <!-- Includes                                          -->
+  <!-- ================================================= -->
+
+  <!-- Scene -->
+  <xacro:include
+    filename="$(find scene_description)/urdf/scene_prefixed.urdf.xacro"/>
+
+  <!-- xArm5 + slider + screwdriver -->
+  <xacro:include
+    filename="$(find xarm5_description)/urdf/xarm5_slider_macro.urdf.xacro"/>
+
+  <!-- UF850 + RG6 -->
+  <xacro:include
+    filename="$(find uf850_description)/urdf/uf850_rg6_macro.urdf.xacro"/>
+
+
+  <!-- ================================================= -->
+  <!-- Instantiate Scene                                 -->
+  <!-- ================================================= -->
+
+  <xacro:scene_model
+    prefix="$(arg scene_prefix)"
+    mesh_pkg="$(arg scene_mesh_pkg)"
+    mesh_subdir="$(arg scene_mesh_dir)"
+    color_primary="$(arg scene_color)"/>
+
+
+  <!-- ================================================= -->
+  <!-- Instantiate Robots                                -->
+  <!-- ================================================= -->
+
+  <!-- xArm5 on linear slider -->
+  <xacro:xarm5_slider
+    slider_prefix="$(arg slider_prefix)"
+    arm_prefix="$(arg xarm_prefix)"
+    tool_prefix="$(arg tool_prefix)"/>
+
+  <!-- UF850 with RG6 -->
+  <xacro:uf850_rg6
+    mount_prefix="$(arg mount_prefix)"
+    arm_prefix="$(arg uf850_prefix)"
+    gripper_prefix="$(arg rg6_prefix)"/>
+
+
+  <!-- ================================================= -->
+  <!-- Attach robots to scene                            -->
+  <!-- ================================================= -->
+
+  <link name="world_world"/>
+
+  <joint name="world_to_scene_root" type="fixed">
+    <parent link="world_world"/>
+    <child  link="$(arg scene_prefix)world"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Scene → xArm5 slider -->
+  <joint name="scene_to_xarm5_slider" type="fixed">
+    <parent link="$(arg scene_prefix)base_link"/>
+    <child  link="$(arg slider_prefix)base_link"/>
+    <!-- adjust for cell layout -->
+    <origin xyz="0.0 0.0 0.0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Scene → UF850 mount -->
+  <joint name="scene_to_uf850" type="fixed">
+    <parent link="$(arg scene_prefix)base_link"/>
+    <child  link="$(arg mount_prefix)base_link"/>
+    <!-- offset second arm -->
+    <origin xyz="0.461 -0.292 0.837" rpy="0 0 0"/>
+  </joint>
+
+</robot>

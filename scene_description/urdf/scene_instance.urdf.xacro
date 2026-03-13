@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<robot name="scene" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Scene macro -->
+  <xacro:include
+    filename="$(find scene_description)/urdf/scene_prefixed.urdf.xacro"/>
+
+  <!-- Launch arguments -->
+  <xacro:arg name="prefix" default="sd1_"/>
+  <xacro:arg name="mesh_pkg" default="scene_description"/>
+  <xacro:arg name="mesh_subdir" default="meshes/visual"/>
+  <xacro:arg name="color_primary" default="0.75 0.75 0.78 1.0"/>
+
+  <!-- Instantiate -->
+  <xacro:scene_model
+    prefix="$(arg prefix)"
+    mesh_pkg="$(arg mesh_pkg)"
+    mesh_subdir="$(arg mesh_subdir)"
+    color_primary="$(arg color_primary)"/>
+
+</robot>

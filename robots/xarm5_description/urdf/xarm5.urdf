@@ -1,0 +1,217 @@
+<?xml version="1.0"?>
+<robot name="xarm5">
+
+  <!-- Simple materials -->
+  <material name="mat_white"><color rgba="0.82 0.82 0.82 1.00"/></material>
+  <material name="mat_silver"><color rgba="0.70 0.72 0.75 1.00"/></material>
+
+  <!-- ===================== -->
+  <!-- base_link (exact)     -->
+  <!-- ===================== -->
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://xarm5_description/meshes/visual/link_base.stl" />
+      </geometry>
+      <material name="mat_white"/>
+    </visual>
+    <!-- Using visual as collision, per your request -->
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://xarm5_description/meshes/visual/link_base.stl"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="-0.00218 -0.00023 0.08604" rpy="0 0 0"/>
+      <mass value="1.95"/>
+      <inertia ixx="0.004805" ixy="-8.33e-06" ixz="0.00026847"
+               iyy="0.0050349" iyz="7.23e-06"  izz="0.0025418"/>
+    </inertial>
+  </link>
+
+  <!-- ===================== -->
+  <!-- link1 (exact inertial from your set) -->
+  <!-- ===================== -->
+  <link name="link1">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://xarm5_description/meshes/visual/link1.stl" />
+      </geometry>
+      <material name="mat_white"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://xarm5_description/meshes/visual/link1.stl" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.00013 0.0294 -0.01239" rpy="0 0 0"/>
+      <mass value="2.3849"/>
+      <inertia ixx="0.005705" ixy="1.056e-05" ixz="-2.642e-05"
+               iyy="0.00489488" iyz="-0.000890795" izz="0.00334846"/>
+    </inertial>
+  </link>
+
+  <!-- joint1: base_link -> link1 -->
+  <joint name="joint1" type="revolute">
+    <origin xyz="0 0 0.267" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child  link="link1"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.283185307179586" upper="6.283185307179586" effort="50" velocity="3.14"/>
+    <dynamics damping="10" friction="1"/>
+  </joint>
+
+  <!-- ===================== -->
+  <!-- link2 (TODO inertial) -->
+  <!-- ===================== -->
+  <link name="link2">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://xarm5_description/meshes/visual/link2.stl" />
+      </geometry>
+      <material name="mat_white"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://xarm5_description/meshes/visual/link2.stl" />
+      </geometry>
+    </collision>
+    <!-- TODO: replace with exact values from your inertial YAML for link2 -->
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="1.0"/>
+      <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.002"/>
+    </inertial>
+  </link>
+
+  <!-- joint2: link1 -> link2 -->
+  <joint name="joint2" type="revolute">
+    <origin xyz="0 0 0" rpy="-1.5708 0 0"/>
+    <parent link="link1"/>
+    <child  link="link2"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.059" upper="2.0944" effort="50" velocity="3.14"/>
+    <dynamics damping="10" friction="1"/>
+  </joint>
+
+  <!-- ===================== -->
+  <!-- link3 (TODO inertial) -->
+  <!-- ===================== -->
+  <link name="link3">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://xarm5_description/meshes/visual/link3.stl" />
+      </geometry>
+      <material name="mat_white"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://xarm5_description/meshes/visual/link3.stl" />
+      </geometry>
+    </collision>
+    <!-- TODO: replace with exact values from your inertial YAML for link3 -->
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.8"/>
+      <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.002"/>
+    </inertial>
+  </link>
+
+  <!-- joint3: link2 -> link3 -->
+  <joint name="joint3" type="revolute">
+    <origin xyz="0.0535 -0.2845 0" rpy="0 0 0"/>
+    <parent link="link2"/>
+    <child  link="link3"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.927" upper="0.19198" effort="30" velocity="3.14"/>
+    <dynamics damping="5" friction="1"/>
+  </joint>
+
+  <!-- ===================== -->
+  <!-- link4 (TODO inertial) -->
+  <!-- ===================== -->
+  <link name="link4">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://xarm5_description/meshes/visual/link4.stl" />
+      </geometry>
+      <material name="mat_white"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://xarm5_description/meshes/visual/link4.stl" />
+      </geometry>
+    </collision>
+    <!-- TODO: replace with exact values from your inertial YAML for link4 -->
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.7"/>
+      <inertia ixx="0.0015" ixy="0" ixz="0" iyy="0.0015" iyz="0" izz="0.0015"/>
+    </inertial>
+  </link>
+
+  <!-- joint4: link3 -> link4 -->
+  <joint name="joint4" type="revolute">
+    <origin xyz="0.0775 0.3425 0" rpy="0 0 0"/>
+    <parent link="link3"/>
+    <child  link="link4"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.69297" upper="3.141592653589793" effort="20" velocity="3.14"/>
+    <dynamics damping="3" friction="1"/>
+  </joint>
+
+  <!-- ===================== -->
+  <!-- link5 (exact inertial from your set) -->
+  <!-- ===================== -->
+  <link name="link5">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://xarm5_description/meshes/visual/link5.stl" />
+      </geometry>
+      <material name="mat_silver"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://xarm5_description/meshes/visual/link5.stl" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 -0.00677 -0.01098" rpy="0 0 0"/>
+      <mass value="0.17"/>
+      <inertia ixx="9.3e-05" ixy="-0.0" ixz="-0.0"
+               iyy="5.87e-05" iyz="-3.6e-06" izz="0.000132"/>
+    </inertial>
+  </link>
+
+  <!-- joint5: link4 -> link5 -->
+  <joint name="joint5" type="revolute">
+    <origin xyz="0.076 0.097 0" rpy="-1.5708 0 0"/>
+    <parent link="link4"/>
+    <child  link="link5"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.283185307179586" upper="6.283185307179586" effort="20" velocity="3.14"/>
+    <dynamics damping="3" friction="1"/>
+  </joint>
+
+  <!-- TCP helper (adjust when you have the precise tool transform) -->
+  <link name="tool0"/>
+  <joint name="tool0_fixed" type="fixed">
+    <origin xyz="0 0 0.0" rpy="0 0 0"/>
+    <parent link="link5"/>
+    <child  link="tool0"/>
+  </joint>
+
+</robot>

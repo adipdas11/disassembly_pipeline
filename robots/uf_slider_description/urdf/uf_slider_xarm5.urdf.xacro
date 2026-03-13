@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<robot name="uf_slider_xarm5" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Include slider + xarm5 + screwdriver prefixed macros -->
+  <xacro:include filename="$(find uf_slider_description)/urdf/uf_slider_prefixed.urdf.xacro"/>
+  <xacro:include filename="$(find xarm5_description)/urdf/xarm5_prefixed.urdf.xacro"/>
+  <xacro:include filename="$(find screwdriver_description)/urdf/screwdriver_prefixed.urdf.xacro"/>
+
+  <!--
+    Defaults: these are global properties.
+    They WILL be overridden by CLI args:
+      xacro uf_slider_xarm5.urdf.xacro slider_prefix:=s1_ arm_prefix:=x1_ screw_prefix:=sd_
+  -->
+  <xacro:property name="slider_prefix" value="s1_"/>
+  <xacro:property name="arm_prefix"    value="x1_"/>
+  <xacro:property name="screw_prefix"  value="sd_"/>
+
+  <!-- Instantiate slider -->
+  <xacro:uf_slider prefix="${slider_prefix}"/>
+
+  <!-- Instantiate xArm5 -->
+  <xacro:xarm5_robot prefix="${arm_prefix}"/>
+
+  <!-- Instantiate screwdriver -->
+  <xacro:screwdriver_robot prefix="${screw_prefix}"/>
+
+  <!-- Fixed mount: slider xarm5_mount_1 -> arm base_link -->
+  <joint name="${slider_prefix}${arm_prefix}mount_fixed" type="fixed">
+    <!-- Adjust this transform if the arm doesn't sit right on the mount -->
+    <origin xyz="0.0 0.1475 0.02" rpy="0 0 0"/>
+    <parent link="${slider_prefix}xarm5_mount_1"/>
+    <child  link="${arm_prefix}base_link"/>
+  </joint>
+
+  <!-- Fixed mount: screwdriver base_link -> xarm5 tool0 -->
+  <joint name="${screw_prefix}to_${arm_prefix}tool0" type="fixed">
+    <origin xyz="0 0 -0.12" rpy="3.14 0 0"/>
+    <parent link="${arm_prefix}tool0"/>
+    <child  link="${screw_prefix}base_link"/>
+  </joint>
+
+</robot>

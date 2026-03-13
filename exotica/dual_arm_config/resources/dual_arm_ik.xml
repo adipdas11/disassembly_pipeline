@@ -1,0 +1,68 @@
+<?xml version="1.0" ?>
+<IKSolverDemoConfig>
+  <!-- 
+       A simple IK Solver configuration for the dual-arm setup (uf850 + xarm5).
+       It targets screwdriver_tcp for the xArm and rg6_hand_tcp for the UF850.
+  -->
+
+  <IKSolver Name="MySolver">
+    <MaxIterations>100</MaxIterations>
+    <Tolerance>1e-4</Tolerance>
+  </IKSolver>
+
+  <UnconstrainedEndPoseProblem Name="MyProblem">
+    <PlanningScene>
+      <Scene>
+        <JointGroup>dual_arms</JointGroup>
+        <URDF>package://dual_arm_moveit_config/config/dual_arm_world.urdf</URDF>
+        <SRDF>package://dual_arm_moveit_config/config/dual_arm_world.srdf</SRDF>
+        <CollisionScene>
+          <CollisionSceneFCLLatest Name="MyCollisionScene"/>
+        </CollisionScene>
+        <AlwaysUpdateCollisionScene>1</AlwaysUpdateCollisionScene>
+      </Scene>
+    </PlanningScene>
+
+    <Maps>
+      <!-- Task Map for the UF850 TCP -->
+      <EffFrame Name="UF850_TCP">
+        <EndEffector>
+            <Frame Link="rg6_hand_tcp" LinkOffset="0 0 0 0 0 0 1"/>
+        </EndEffector>
+      </EffFrame>
+
+      <!-- Task Map for the xArm5 TCP -->
+      <EffFrame Name="xArm5_TCP">
+        <EndEffector>
+            <Frame Link="screwdriver_tcp" LinkOffset="0 0 0 0 0 0 1"/>
+        </EndEffector>
+      </EffFrame>
+
+      <!-- Joint Limits and Regularization -->
+      <JointLimit Name="Limits"/>
+
+      <!-- Soft collision penalty for world and self-collision avoidance. -->
+      <SmoothCollisionDistance Name="Collision">
+        <WorldMargin>0.05</WorldMargin>
+        <CheckSelfCollision>1</CheckSelfCollision>
+        <Linear>1</Linear>
+      </SmoothCollisionDistance>
+    </Maps>
+
+    <Cost>
+      <!-- EffFrame uses a single task weight for the full 6D pose objective. -->
+      <Task Task="UF850_TCP" Rho="1e3"/>
+      <Task Task="xArm5_TCP" Rho="1e3"/>
+      <Task Task="Collision" Rho="50.0"/>
+      <Task Task="Limits" Rho="10.0"/>
+    </Cost>
+
+    <!-- Starting joint positions (home state) -->
+    <StartState>0 0 0 -1.5708 0 0 0 0 0 1.5708 0 0 0</StartState>
+    
+    <!-- Joint weights: xarm(5), uf(6), gripper(1), slider(1) -->
+    <!-- Higher weight = harder for EXOTica to move that joint -->
+    <W> 1 1 1 1 1 1 1 1 1 1 1 1 1 </W>
+  </UnconstrainedEndPoseProblem>
+
+</IKSolverDemoConfig>

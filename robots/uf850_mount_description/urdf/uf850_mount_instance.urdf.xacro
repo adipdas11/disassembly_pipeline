@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<robot name="uf850_mount_instance" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Include the prefixed macro definition -->
+  <xacro:include filename="$(find uf850_mount_description)/urdf/uf850_mount_prefixed.urdf.xacro"/>
+
+  <!-- Default prefix; can be overridden via CLI/launch -->
+  <xacro:property name="plate_prefix" value="uf850_"/>
+
+  <!-- Instantiate one plate -->
+  <xacro:uf850_mount prefix="${plate_prefix}"/>
+
+</robot>

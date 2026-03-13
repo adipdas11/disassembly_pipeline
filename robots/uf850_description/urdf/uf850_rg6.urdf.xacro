@@ -1,0 +1,62 @@
+<?xml version="1.0"?>
+<robot name="uf850_system" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ===================== -->
+  <!-- Includes              -->
+  <!-- ===================== -->
+
+  <xacro:include
+    filename="$(find uf850_mount_description)/urdf/uf850_mount_prefixed.urdf.xacro"/>
+
+  <xacro:include
+    filename="$(find uf850_description)/urdf/uf850_prefixed.urdf.xacro"/>
+
+  <xacro:include
+    filename="$(find rg6_description)/urdf/rg6_prefixed.urdf.xacro"/>
+
+
+  <!-- ===================== -->
+  <!-- Arguments              -->
+  <!-- ===================== -->
+
+  <xacro:arg name="mount_prefix"   default="mount_"/>
+  <xacro:arg name="arm_prefix"     default="u1_"/>
+  <xacro:arg name="gripper_prefix" default="rg6_"/>
+
+
+  <!-- ===================== -->
+  <!-- Instantiate models     -->
+  <!-- ===================== -->
+
+  <!-- Mount -->
+  <xacro:uf850_mounting_plate
+    prefix="$(arg mount_prefix)"/>
+
+  <!-- Arm -->
+  <xacro:uf850_robot
+    prefix="$(arg arm_prefix)"/>
+
+  <!-- Gripper -->
+  <xacro:rg6_robot
+    prefix="$(arg gripper_prefix)"/>
+
+
+  <!-- ===================== -->
+  <!-- Fixed attachments      -->
+  <!-- ===================== -->
+
+  <!-- Mount → Arm -->
+  <joint name="mount_to_arm" type="fixed">
+    <parent link="$(arg mount_prefix)base_link"/>
+    <child  link="$(arg arm_prefix)base_link"/>
+    <origin xyz="0 0 0.01" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Arm → Gripper -->
+  <joint name="arm_to_gripper" type="fixed">
+    <parent link="$(arg arm_prefix)tool0"/>
+    <child  link="$(arg gripper_prefix)base_link"/>
+    <origin xyz="0 0 0" rpy="0 0 1.57"/>
+  </joint>
+
+</robot>

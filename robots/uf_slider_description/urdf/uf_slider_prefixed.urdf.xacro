@@ -1,0 +1,86 @@
+<?xml version="1.0"?>
+<robot name="ufactory_slider" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!--
+    Macro: uf_slider
+    params:
+      prefix - optional string to prefix all link/joint/material names
+  -->
+  <xacro:macro name="uf_slider" params="prefix:= ''">
+
+    <!-- Prefixed material -->
+    <material name="${prefix}silver">
+      <color rgba="0.7 0.7 0.7 1.0"/>
+    </material>
+
+    <link name="${prefix}base_link">
+      <inertial>
+        <origin xyz="0.4512558634182436 0.7649880658756126 0.8977041647656298" rpy="0 0 0"/>
+        <mass value="38.16717080405603"/>
+        <inertia ixx="4.03213" iyy="0.12523" izz="4.112436"
+                 ixy="-0.033101" iyz="0.032219" ixz="0.004374"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://uf_slider_description/meshes/visual/base_link.stl"
+                scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="${prefix}silver"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://uf_slider_description/meshes/visual/base_link.stl"
+                scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <link name="${prefix}xarm5_mount_1">
+      <inertial>
+        <origin xyz="-0.0007622970508756044 0.15208081232838055 -0.014120943868922042" rpy="0 0 0"/>
+        <mass value="8.788080840094517"/>
+        <inertia ixx="0.023497" iyy="0.022264" izz="0.03835"
+                 ixy="0.000234" iyz="0.000477" ixz="0.000414"/>
+      </inertial>
+      <visual>
+        <origin xyz="-0.4625 -0.3096 -0.9564" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://uf_slider_description/meshes/visual/xarm5_mount.stl"
+                scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="${prefix}silver"/>
+      </visual>
+      <collision>
+        <origin xyz="-0.4625 -0.3096 -0.9564" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://uf_slider_description/meshes/visual/xarm5_mount.stl"
+                scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}slider_joint" type="prismatic">
+      <origin xyz="0.4625 0.3096 0.9564" rpy="0 0 0"/>
+      <parent link="${prefix}base_link"/>
+      <child link="${prefix}xarm5_mount_1"/>
+      <axis xyz="0.0 -1.0 0.0"/>
+      <limit upper="0.0" lower="-0.7" effort="100" velocity="100"/>
+    </joint>
+
+    <!-- Transmission block -->
+    <transmission name="${prefix}slider_joint_tran">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="${prefix}slider_joint">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+      <actuator name="${prefix}slider_joint_actr">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+    </transmission>
+
+  </xacro:macro>
+
+</robot>

@@ -1,0 +1,20 @@
+apriltag:
+  ros__parameters:
+    # --- Critical Parameters from your CLI ---
+    image_transport: compressed    # Matches "-p image_transport:=compressed"
+    family: 36h11                  # Matches "-p family:=36h11"
+    size: 0.08                     # Matches "-p size:=0.08"
+    publish_tf: true               # Matches "-p publish_tf:=true"
+    
+    # --- QoS Fix ---
+    qos_profile: sensor_data       # Required when using compressed/best_effort images
+    
+    # --- Standard Settings ---
+    max_hamming: 0
+    z_up: true
+
+    # --- Tag Definition ---
+    tag:
+      ids: [0]
+      frames: [tag_0]
+      sizes: [0.08]

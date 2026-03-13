@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<robot name="uf850" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!-- Top-level args -->
+  <xacro:arg name="prefix" default="u1_"/>
+  <xacro:arg name="mesh_pkg" default="uf850_description"/>
+  <xacro:arg name="mesh_subdir" default="meshes/visual"/>
+
+  <!-- Include prefab -->
+  <xacro:include filename="$(find uf850_description)/urdf/uf850_prefixed.urdf.xacro"/>
+
+  <!-- Call macro with the SAME arg names -->
+  <xacro:uf850_robot
+      prefix="$(arg prefix)"
+      mesh_pkg="$(arg mesh_pkg)"
+      mesh_subdir="$(arg mesh_subdir)"
+      color_primary="0.95 0.55 0.10 1.0"
+      color_secondary="0.70 0.35 0.08 1.0"/>
+</robot>

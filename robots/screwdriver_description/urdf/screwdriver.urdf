@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<robot name="screw_driver">
+
+  <!-- ===================== -->
+  <!-- Material              -->
+  <!-- ===================== -->
+  <material name="silver">
+    <color rgba="0.75 0.75 0.78 1.0"/>
+  </material>
+
+  <!-- ===================== -->
+  <!-- Base Link              -->
+  <!-- ===================== -->
+  <link name="base_link">
+    <inertial>
+      <origin
+        xyz="0.0010808014887289184 0.007507986594187236 -0.05921266535363922"
+        rpy="0 0 0"/>
+      <mass value="2.9252936726647953"/>
+      <inertia
+        ixx="0.008232"
+        iyy="0.00804"
+        izz="0.00213"
+        ixy="0.000208"
+        iyz="0.00098"
+        ixz="-0.000486"/>
+    </inertial>
+
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh
+          filename="package://screwdriver_description/meshes/base_link.stl"
+          scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh
+          filename="package://screwdriver_description/meshes/base_link.stl"
+          scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+</robot>

@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<robot name="rg6" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:arg name="prefix" default="g1_"/>
+  <xacro:arg name="mesh_pkg" default="rg6_description"/>
+  <xacro:arg name="mesh_subdir" default="meshes/visual"/>
+  <xacro:arg name="color_primary" default="0.75 0.75 0.78 1.0"/>
+  <xacro:arg name="color_secondary" default="0.60 0.60 0.65 1.0"/>
+
+  <xacro:include filename="$(find rg6_description)/urdf/rg6_prefixed.urdf.xacro"/>
+
+  <xacro:rg6_robot
+      prefix="$(arg prefix)"
+      mesh_pkg="$(arg mesh_pkg)"
+      mesh_subdir="$(arg mesh_subdir)"
+      color_primary="$(arg color_primary)"
+      color_secondary="$(arg color_secondary)"/>
+</robot>

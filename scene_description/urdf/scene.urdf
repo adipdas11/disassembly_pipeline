@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<robot name="scene">
+
+  <!-- Inline material -->
+  <material name="silver">
+    <color rgba="0.75 0.75 0.78 1.0"/>
+  </material>
+
+  <!-- Dummy root -->
+  <link name="world"/>
+
+  <!-- Scene link -->
+  <link name="base_link">
+    <inertial>
+      <origin xyz="1.1342588136112335 -0.02214841975228302 0.6612820854300633" rpy="0 0 0"/>
+      <mass value="1596.2128206057669"/>
+      <inertia
+        ixx="2131.62125"
+        iyy="635.241174"
+        izz="2488.864681"
+        ixy="29.498323"
+        iyz="-3.037225"
+        ixz="-1.47522"/>
+    </inertial>
+
+    <visual>
+      <geometry>
+        <mesh
+          filename="file:///home/adip/workspace/disassembly_ws/src/scene_description/meshes/visual/base_link.stl"
+          scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+
+    <collision>
+      <geometry>
+        <mesh
+          filename="file:///home/adip/workspace/disassembly_ws/src/scene_description/meshes/visual/base_link.stl"
+          scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="world_to_base" type="fixed">
+    <parent link="world"/>
+    <child link="base_link"/>
+  </joint>
+
+</robot>

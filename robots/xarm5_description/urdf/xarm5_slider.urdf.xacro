@@ -1,0 +1,75 @@
+<?xml version="1.0"?>
+<robot name="xarm5_slider_ft_screwdriver_system"
+       xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ================================================= -->
+  <!-- Arguments                                         -->
+  <!-- ================================================= -->
+
+  <xacro:arg name="slider_prefix" default="slider_"/>
+  <xacro:arg name="arm_prefix"    default="xarm5_"/>
+  <xacro:arg name="ft_prefix"     default="ft_"/>
+  <xacro:arg name="tool_prefix"   default="screwdriver_"/>
+
+  <!-- ================================================= -->
+  <!-- Includes                                          -->
+  <!-- ================================================= -->
+
+  <!-- Linear slider -->
+  <xacro:include
+    filename="$(find uf_slider_description)/urdf/uf_slider_prefixed.urdf.xacro"/>
+
+  <!-- xArm5 -->
+  <xacro:include
+    filename="$(find xarm5_description)/urdf/xarm5_prefixed.urdf.xacro"/>
+
+  <!-- Robotiq FT300 adapter -->
+  <xacro:include
+    filename="$(find robotiq_ft_sensor_description)/urdf/robotiq_ft300_adapter.urdf.xacro"/>
+
+  <!-- Screwdriver -->
+  <xacro:include
+    filename="$(find screwdriver_description)/urdf/screwdriver_prefixed.urdf.xacro"/>
+
+  <!-- ================================================= -->
+  <!-- Instantiate subsystems                            -->
+  <!-- ================================================= -->
+
+  <!-- Slider -->
+  <xacro:uf_slider
+    prefix="$(arg slider_prefix)"/>
+
+  <!-- xArm5 -->
+  <xacro:xarm5_robot
+    prefix="$(arg arm_prefix)"/>
+
+  <!-- FT300 mounted on xArm tool0 -->
+  <xacro:robotiq_ft300_on_tool
+    parent="$(arg arm_prefix)tool0"
+    tf_prefix="$(arg ft_prefix)">
+    <origin xyz="0 0 -0.124" rpy="0 0 0"/>
+  </xacro:robotiq_ft300_on_tool>
+
+  <!-- Screwdriver -->
+  <xacro:screwdriver_robot
+    prefix="$(arg tool_prefix)"/>
+
+  <!-- ================================================= -->
+  <!-- Fixed attachments                                 -->
+  <!-- ================================================= -->
+
+  <!-- Slider → xArm base -->
+  <joint name="slider_to_xarm5" type="fixed">
+    <parent link="$(arg slider_prefix)xarm5_mount_1"/>
+    <child  link="$(arg arm_prefix)base_link"/>
+    <origin xyz="0.0 0.1475 0.03" rpy="0 0 0"/>
+  </joint>
+
+  <!-- FT frame → Screwdriver -->
+  <joint name="ft_to_screwdriver" type="fixed">
+    <parent link="$(arg ft_prefix)robotiq_ft_frame_id"/>
+    <child  link="$(arg tool_prefix)base_link"/>
+    <origin xyz="0 0 0" rpy="3.14 0 -1.57"/>
+  </joint>
+
+</robot>

@@ -1,0 +1,12 @@
+initial_positions:
+  xarm5_joint1: 0.0
+  xarm5_joint2: 0.0
+  xarm5_joint3: 0.0
+  xarm5_joint4: 0
+  xarm5_joint5: 0.0
+  u1_joint1: 0.0
+  u1_joint2: 0.0
+  u1_joint3: 0.0
+  u1_joint4: 0.0
+  u1_joint5: 0
+  u1_joint6: 0.0

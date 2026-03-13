@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<robot name="ufactory_slider" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Include the prefixed macro definition -->
+  <xacro:include filename="$(find uf_slider_description)/urdf/uf_slider_prefixed.urdf.xacro"/>
+
+  <!-- Prefix for this instance -->
+  <xacro:property name="slider_prefix" value="slider_"/>
+
+  <!-- Instantiate one slider with prefix -->
+  <xacro:uf_slider prefix="${slider_prefix}"/>
+
+</robot>
