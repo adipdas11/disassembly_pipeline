@@ -9,9 +9,9 @@ vision_training/realsense_data/
 vision_training/record_data/
 vision_training/train_vision_model/
 vision_training/__pycache__/
-vision_training/**/*.pt
-vision_training/**/*.pth
-vision_training/**/*.ckpt
+vision_training/*.pt
+vision_training/*.pth
+vision_training/*.ckpt
 vision_training/Project 1 (Segmentation)/rfdetr/dataset_rfdetr_seg/
 vision_training/Project 1 (Segmentation)/rfdetr/HDD_Global_Scout-3/
 vision_training/Project 2 (Tool-Screw)/rfdetr/dataset_rfdetr_box_640/
@@ -27,7 +27,6 @@ vision_training/**/runs/
 
 # Editor/IDE
 .vscode/
-.claude/
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
