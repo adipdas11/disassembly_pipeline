@@ -538,23 +538,14 @@ class MotionBackend:
             
             # Blanking period (0.2s) to ignore initial jerk
             if (time.time() - start_t) > 0.2:
-                if spike > threshold_nm:
+                # User requested 5x the threshold spike (3 * 5 = 15Nm)
+                if spike > (threshold_nm * 5.0):
                     self.stop_immediately()
-                    self.node.get_logger().warn(f"🎯 CONTACT DETECTED: {spike:.3f}Nm spike.")
+                    self.node.get_logger().warn(f"🎯 CONTACT DETECTED: {spike:.3f}Nm spike (Threshold: {threshold_nm*5.0}Nm).")
                     return True
 
-            try:
-                curr_z = self.tf_buffer.lookup_transform("world_world", target_link, rclpy.time.Time()).transform.translation.z
-                if (start_z - curr_z) >= max_travel_m:
-                    self.stop_immediately()
-                    self.node.get_logger().error(
-                        f"❌ Tactile descent aborted after {start_z - curr_z:.3f} m without contact."
-                    )
-                    return False
-            except Exception as exc:
-                self.stop_immediately()
-                self.node.get_logger().error(f"❌ Tactile descent aborted due to TF failure: {exc}")
-                return False
+            # Removed distance-based abort (max_travel_m) as requested.
+            # Motion will now continue until contact or timeout.
 
             twist.header.stamp = self.node.get_clock().now().to_msg()
             self.servo_pub.publish(twist)
