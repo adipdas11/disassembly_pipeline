@@ -25,10 +25,11 @@ class PickupSkill(Node):
         # Physical Parameters
         self.UF_TOOL_LENGTH = 0.26
         self.HOVER_HEIGHT = 0.05    
-        self.DESCENT_SPEED = 0.09              # Reduced for safety
-        self.TORQUE_THRESHOLD = 3.0            # Added missing parameter
-        self.RETRACT_DIST = 0.05               # Increased for clearance
+        self.DESCENT_SPEED = 0.09              
+        self.TORQUE_THRESHOLD = 3.0            
+        self.RETRACT_DIST = 0.05               
         self.RETRACT_VELOCITY = 0.5
+        self.POST_GRASP_RETRACT_SPEED = 0.01   # New variable for slow, safe lifts
         self.OPEN_DEG, self.CLOSE_DEG = 33.0, -35.0
         self.GRIPPER_CLOSE_FORCE_N = 50.0      # Updated to 30N as requested
         self.GRIPPER_OPEN_FORCE_N = 20.0
@@ -160,7 +161,7 @@ class PickupSkill(Node):
 
         print("⬆️ Retracting 10mm after contact...")
         if not self._start_uf_servo(): return False
-        if not self.uf850.retract_servo_z_closed_loop(0.01, speed_mps=0.03): return False
+        if not self.uf850.retract_servo_z_closed_loop(0.01, speed_mps=self.POST_GRASP_RETRACT_SPEED): return False
         self.wait_for_arm_settled()
 
         # --- STEP 4: GRASP & RETRACT ---
@@ -175,7 +176,7 @@ class PickupSkill(Node):
 
         print("⬆️ Final Retract 30mm...")
         if not self._start_uf_servo(): return False
-        if not self.uf850.retract_servo_z_closed_loop(0.03, speed_mps=0.03): return False
+        if not self.uf850.retract_servo_z_closed_loop(0.03, speed_mps=self.POST_GRASP_RETRACT_SPEED): return False
         self.wait_for_arm_settled()
 
         # --- STEP 5: DROP-OFF ---

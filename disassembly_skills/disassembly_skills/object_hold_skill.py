@@ -43,7 +43,9 @@ class ObjectHoldSkill(Node):
         self.GRIPPER_OPEN_FORCE_N = 20.0
         self.GRIPPER_CLOSE_FORCE_N = 100.0
         self.TORQUE_THRESHOLD = 3.0
+        self.DESCENT_SPEED = 0.09             # Synced with Pickup Skill
         self.RETRACT_VELOCITY = 0.05
+        self.POST_GRASP_RETRACT_SPEED = 0.01  # Safe post-contact lift
         
         self.get_logger().info("🚀 Object Hold Skill: Top-Down Cartesian Tactile Mode Active.")
         self.publish_state("IDLE")
@@ -53,6 +55,18 @@ class ObjectHoldSkill(Node):
 
     def publish_hold_status(self, h): 
         self.hold_status_pub.publish(Bool(data=h))
+
+    def _start_uf_servo(self, timeout_sec=2.0):
+        if not self.uf_servo_start_client.wait_for_service(timeout_sec=timeout_sec):
+            self.get_logger().error("❌ /uf_servo_node/start_servo is unavailable.")
+            return False
+        future = self.uf_servo_start_client.call_async(Trigger.Request())
+        deadline = time.time() + timeout_sec
+        while rclpy.ok() and not future.done():
+            if time.time() >= deadline: return False
+            time.sleep(0.01)
+        response = future.result()
+        return response is not None and response.success
 
     def vision_callback(self, msg):
         try:
@@ -234,23 +248,20 @@ class ObjectHoldSkill(Node):
 
         # --- STEP 2: CARTESIAN TACTILE DESCENT ---
         if interactive: input("🚀 STEP 2: Cartesian Tactile Descent? [Enter]")
-        # The 8-degree tilt is perfectly preserved as the arm drives straight down in world Z!
-        if not self.uf850.move_linear_z_with_torque_stop(0.2, self.TORQUE_THRESHOLD): 
+        # Now uses Joint 3 monitoring with 5x spike detection (15Nm)
+        if not self.uf850.move_linear_z_with_torque_stop(self.DESCENT_SPEED, self.TORQUE_THRESHOLD): 
             print("❌ [ERROR] Failed to touch down securely. Aborting.")
             return False
-        if not self.wait_for_arm_settled():
-            print("❌ [ERROR] Arm did not settle after tactile descent.")
-            return False
+        self.wait_for_arm_settled()
         
-        # --- STEP 3: PLANNED RETRACT (5mm) ---
-        if interactive: input("🚀 STEP 3: Planned Retract 5mm? [Enter]")
-        # Switching to planned retract because Servo gets stuck near the table collision model
-        if not self.uf850.retract_relative_z(0.005, velocity=self.RETRACT_VELOCITY):
-            print("❌ [ERROR] Failed to retract 5mm using planned motion. Aborting.")
+        # --- STEP 3: CLOSED-LOOP RETRACT (5mm) ---
+        if interactive: input("🚀 STEP 3: Closed-Loop Retract 5mm? [Enter]")
+        # Switched to closed-loop to ensure it doesn't get stuck near table collision
+        if not self._start_uf_servo(): return False
+        if not self.uf850.retract_servo_z_closed_loop(0.005, speed_mps=self.POST_GRASP_RETRACT_SPEED):
+            print("❌ [ERROR] Failed to retract 5mm using closed-loop servo. Aborting.")
             return False
-        if not self.wait_for_arm_settled():
-            print("❌ [ERROR] Arm did not settle after retract.")
-            return False
+        self.wait_for_arm_settled()
 
         # --- STEP 4: CLOSE GRIPPER ---
         if interactive: input("🚀 STEP 4: CLOSE Gripper? [Enter]")
