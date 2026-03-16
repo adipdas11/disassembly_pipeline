@@ -34,7 +34,7 @@ class UnscrewSkill(Node):
             "SPIRAL_SPEED": 0.015,          # m/s
             
             # Wiggle & Engagement
-            "WIGGLE_DIST": 0.003,           # m (3mm as requested for closed-loop)
+            "WIGGLE_DIST": 0.002,           # m (3mm as requested for closed-loop)
             "WIGGLE_SPEED": 0.01,          # m/s
             "WIGGLE_FORCE_THRESHOLD": 0.5,  # N (Seating confirmation)
             
