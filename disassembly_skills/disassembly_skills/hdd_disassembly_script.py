@@ -96,7 +96,7 @@ class HDDDisassemblyScript(Node):
                 continue
 
             target = chassis_list[0]
-            tid, tlabel = target["id"], target["label"]
+            tid, tlabel = target.get("id"), target.get("label", "unknown")
             print(f"  🎯 Found: {tlabel} (ID: {tid})")
             print(f"  🗜️ Calling hold_skill.execute_hold({tid}, '{tlabel}')...")
 
@@ -130,7 +130,7 @@ class HDDDisassemblyScript(Node):
                 return True
 
             target = pcbs[0]
-            tid, tlabel = target["id"], target["label"]
+            tid, tlabel = target.get("id"), target.get("label", "unknown")
             print(f"  📦 Picking up: {tlabel} (ID: {tid}) — attempt {attempt+1}/{MAX_RETRIES}")
 
             self.pickup_skill.execute_pickup(

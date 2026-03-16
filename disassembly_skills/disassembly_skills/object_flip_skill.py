@@ -2,11 +2,27 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
+from rclpy.qos import QoSProfile, DurabilityPolicy
 from std_msgs.msg import String, Bool
 from geometry_msgs.msg import Pose
-from std_srvs.srv import Trigger
-import threading, math, time
+import threading, math, time, os
 from disassembly_skills.motion_backend import MotionBackend
+
+HOLD_STATE_FILE = '/tmp/disassembly_hold_state'
+
+def read_hold_state():
+    try:
+        with open(HOLD_STATE_FILE, 'r') as f:
+            return f.read().strip() == 'true'
+    except Exception:
+        return False
+
+def write_hold_state(held):
+    try:
+        with open(HOLD_STATE_FILE, 'w') as f:
+            f.write('true' if held else 'false')
+    except Exception:
+        pass
 
 class ObjectFlipSkill(Node):
     def __init__(self):
@@ -17,7 +33,6 @@ class ObjectFlipSkill(Node):
         self.xarm5 = MotionBackend(self, "xarm_arm")
         
         self.state_update_pub = self.create_publisher(String, '/robot_state/manip_arm/update', 10)
-        self.uf_servo_start_client = self.create_client(Trigger, '/uf_servo_node/start_servo')
 
         self.PLANNING_FRAME = 'world_world'
         self.ROBOT_EE_LINK = "u1_tool0"
@@ -31,27 +46,21 @@ class ObjectFlipSkill(Node):
         self.GRIPPER_CLOSE_FORCE_N = 100.0     
         
         self.is_holding_object = False
-        self.create_subscription(Bool, '/object_hold_state/is_held', self.hold_status_callback, 10)
-        
+        self.hold_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.hold_status_pub = self.create_publisher(Bool, '/object_hold_state/is_held', self.hold_qos)
+        self.create_subscription(Bool, '/object_hold_state/is_held', self.hold_status_callback, self.hold_qos)
+
         self.get_logger().info("🚀 Object Flip Skill: Compliant with Multi-Arm State Manager.")
 
     def publish_state(self, s): 
         self.state_update_pub.publish(String(data=s))
 
-    def hold_status_callback(self, msg): 
-        self.is_holding_object = msg.data
+    def publish_hold_status(self, h):
+        self.hold_status_pub.publish(Bool(data=h))
+        write_hold_state(h)
 
-    def _start_uf_servo(self, timeout_sec=2.0):
-        if not self.uf_servo_start_client.wait_for_service(timeout_sec=timeout_sec):
-            self.get_logger().error("❌ /uf_servo_node/start_servo is unavailable.")
-            return False
-        future = self.uf_servo_start_client.call_async(Trigger.Request())
-        deadline = time.time() + timeout_sec
-        while rclpy.ok() and not future.done():
-            if time.time() >= deadline: return False
-            time.sleep(0.01)
-        response = future.result()
-        return response is not None and response.success
+    def hold_status_callback(self, msg):
+        self.is_holding_object = msg.data
 
     def _current_uf_joint_positions(self):
         return {n: p for n, p in self.uf850.current_joint_positions.items() if n.startswith("u1_")}
@@ -93,6 +102,9 @@ class ObjectFlipSkill(Node):
         return False
 
     def execute_flip(self, interactive=True):
+        # Ensure clean state (previous skill may have left servo on a different MotionBackend)
+        self.uf850.stop_servo()
+
         # Wait up to 2 seconds for hold message to arrive (ROS sync buffer)
         sw = time.time()
         while not self.is_holding_object and (time.time() - sw) < 2.0:
@@ -106,9 +118,8 @@ class ObjectFlipSkill(Node):
 
         # --- STEP 1: CLOSED-LOOP LIFT ---
         print(f"🚀 STEP 1: Retracting {self.RETRACT_Z_HEIGHT*100}cm (Closed-Loop)...")
-        if not self._start_uf_servo():
+        if not self.uf850.start_servo():
             return False
-        time.sleep(1.0)
         
         if not self.uf850.retract_servo_z_closed_loop(self.RETRACT_Z_HEIGHT, speed_mps=self.RETRACT_VELOCITY): 
             return False
@@ -133,15 +144,17 @@ class ObjectFlipSkill(Node):
 
         # --- STEP 3: TACTILE DESCENT ---
         print("⏰ Activating Servo Node for tactile descent...")
-        if not self._start_uf_servo():
+        if not self.uf850.start_servo():
             return False
-        time.sleep(1.0)
 
         print(f"⬇️ STEP 3: Tactile Descent (Speed: {self.DESCENT_SPEED}m/s)...")
         # Monitoring Joint 5 (index 4) as requested
         if not self.uf850.move_linear_z_with_torque_stop(self.DESCENT_SPEED, self.TORQUE_THRESHOLD, joint_index=4): 
             return False
         self.wait_for_arm_settled()
+
+        # Stop servo before gripper operations
+        self.uf850.stop_servo()
 
         # --- STEP 4 & 5: RELEASE & RE-GRASP ---
         print("🔓 STEP 4: Releasing...")
@@ -160,6 +173,7 @@ class ObjectFlipSkill(Node):
         self.wait_for_gripper(self.CLOSE_DEG)
         
         self.publish_state("HOLDING")
+        self.publish_hold_status(True)
         print("🎉 FLIP COMPLETE")
         return True
 
@@ -167,6 +181,12 @@ def main(args=None):
     rclpy.init(args=args); node = ObjectFlipSkill()
     executor = MultiThreadedExecutor(); executor.add_node(node)
     threading.Thread(target=executor.spin, daemon=True).start()
+    # Wait for TF buffer to populate before doing anything
+    time.sleep(2.0)
+    # Check file-based hold state as fallback (survives process death)
+    if not node.is_holding_object and read_hold_state():
+        print("📦 Hold state detected from file (previous skill). Proceeding...")
+        node.is_holding_object = True
     try:
         while rclpy.ok():
             if node.is_holding_object:

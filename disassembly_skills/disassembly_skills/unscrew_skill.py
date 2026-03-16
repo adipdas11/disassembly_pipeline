@@ -3,7 +3,6 @@ import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from std_msgs.msg import String, Int8
-from std_srvs.srv import Trigger
 from geometry_msgs.msg import Pose
 import json, time, threading, copy, math
 from disassembly_skills.motion_backend import MotionBackend
@@ -16,8 +15,8 @@ class UnscrewSkill(Node):
         # Physical Geometry
         self.CONFIG = {
             "TOOL_LENGTH": 0.240,           # m (Screwdriver length)
-            "HOVER_DISTANCE": 0.007,        # m (10mm as requested)
-            "TRANSIT_LIFT": 0.050,          # m (Safe travel height)
+            "HOVER_DISTANCE": 0.005,        # m (10mm as requested)
+            "TRANSIT_LIFT": 0.030,          # m (Safe travel height)
             "REACH_LIMIT": 0.680,           # m (xArm reach radius)
             "MM_PER_PIX": 0.000130,         # m/px (Vision calibration)
             
@@ -34,16 +33,16 @@ class UnscrewSkill(Node):
             "SPIRAL_SPEED": 0.015,          # m/s
             
             # Wiggle & Engagement
-            "WIGGLE_DIST": 0.002,           # m (3mm as requested for closed-loop)
-            "WIGGLE_SPEED": 0.01,          # m/s
-            "WIGGLE_FORCE_THRESHOLD": 0.5,  # N (Seating confirmation)
+            "WIGGLE_DIST": 0.001,           # m (1mm for closed-loop)
+            "WIGGLE_SPEED": 0.02,          # m/s
+            "WIGGLE_FORCE_THRESHOLD": 1.5,  # N (Seating confirmation)
             
             # Extraction
             "EXTRACTION_MAX_TIME": 20.0,    # s
-            "EXTRACTION_COMPLIANCE_K": 0.002, # Velocity gain per Newton
+            "EXTRACTION_COMPLIANCE_K": 0.008, # Velocity gain per Newton
             "EXTRACTION_STABLE_TIME": 3.0,  # s
             "POST_GRASP_RETRACT": 0.015,     # m (15mm as requested)
-            "RETRACT_SPEED": 0.02,          # m/s
+            "RETRACT_SPEED": 0.03,          # m/s
             
             # TF Frames
             "WORLD_FRAME": 'world_world',
@@ -59,7 +58,6 @@ class UnscrewSkill(Node):
         self.bin_sub = self.create_subscription(String, '/vision/bin_coordinates', self.bin_callback, 10)
         self.state_pub = self.create_publisher(String, '/robot_state/tool_arm/update', 10)
         self.tool_pub = self.create_publisher(Int8, '/tool_cmd', 10)
-        self.xarm_servo_start_client = self.create_client(Trigger, '/xarm_servo_node/start_servo')
 
         # Thread Safety & State
         self.data_lock = threading.Lock()
@@ -78,10 +76,10 @@ class UnscrewSkill(Node):
             raw_data = msg.data.strip().strip("'").strip('"')
             data = json.loads(raw_data)
             with self.data_lock:
-                self.latest_targets = [obj for obj in data.get("global_view", {}).get("objects", []) 
+                self.latest_targets = [obj for obj in data.get("global_view", {}).get("objects", [])
                                      if "screw" in obj.get("label", "").lower()]
-                self.local_view = data  
-        except: pass
+                self.local_view = data
+        except Exception: pass
 
     def bin_callback(self, msg):
         try:
@@ -90,7 +88,7 @@ class UnscrewSkill(Node):
             if "bin_1" in data and "xyz" in data["bin_1"]:
                 with self.data_lock:
                     self.cached_bin1_xyz = data["bin_1"]["xyz"]
-        except: pass
+        except Exception: pass
 
     def wait_for_arm_settled(self, timeout=20.0):
         """Dynamically monitors joint states to ensures precision moves."""
@@ -118,7 +116,7 @@ class UnscrewSkill(Node):
                     
             last_positions = curr_positions
             time.sleep(0.1)
-        return True
+        return False
 
     # =========================================================================
     # 1. ALIGNMENT & DESCENT (STAIRCASE)
@@ -342,9 +340,11 @@ class UnscrewSkill(Node):
 
         # 15mm Z-Retract after grasp (as requested)
         print(f"⬆️ [POST-GRASP] Retracting {self.CONFIG['POST_GRASP_RETRACT']*1000}mm...")
-        self.moveit_backend.retract_servo_z_closed_loop(self.CONFIG["POST_GRASP_RETRACT"], speed_mps=self.CONFIG["RETRACT_SPEED"])
+        if not self.moveit_backend.retract_servo_z_closed_loop(self.CONFIG["POST_GRASP_RETRACT"], speed_mps=self.CONFIG["RETRACT_SPEED"]):
+            print("⚠️ Post-grasp retract failed.")
+            return False
         self.wait_for_arm_settled()
-        
+
         return True
 
     # =========================================================================
@@ -361,7 +361,7 @@ class UnscrewSkill(Node):
 
         # Find Target Object
         with self.data_lock:
-            target_data = next((t for t in self.latest_targets if t['id'] == target_id), None)
+            target_data = next((t for t in self.latest_targets if t.get('id') == target_id), None)
         if not target_data or 'xyz' not in target_data:
             print(f"❌ Target {target_id} not found in vision.")
             return False
@@ -396,27 +396,28 @@ class UnscrewSkill(Node):
 
         if interactive: input("👉 GATE 2: Start Visual Servoing & Descent [ENTER]")
         
-        # Activate xArm Servo Node
-        if self.xarm_servo_start_client.wait_for_service(timeout_sec=5.0):
-            self.xarm_servo_start_client.call_async(Trigger.Request())
-        time.sleep(1.0)
+        # Activate xArm Servo Mode
+        if not self.moveit_backend.start_servo():
+            print("❌ Failed to start servo mode. Aborting.")
+            return False
 
         # Stage 1: Descent
         staircase_res = self.perform_staircase_descent()
-        if staircase_res == "TIMEOUT" or staircase_res == False:
+        if staircase_res == "TIMEOUT" or staircase_res is False:
             print("⚠️ Descent failed or timed out. Lifting to safety.")
-            self.moveit_backend.retract_servo_z_closed_loop(0.050, speed_mps=0.05)
-            # Proceed to bin to reset or handle next target
+            self.moveit_backend.retract_servo_z_closed_loop(
+                self.CONFIG["TRANSIT_LIFT"], speed_mps=self.CONFIG["RETRACT_SPEED"])
             self._navigate_to_bin(bin1_raw)
-            return True
+            return False
 
         # Stage 2: Extraction
         if interactive: input("👉 GATE 3: Start Compliant Extraction [ENTER]")
         if self.perform_compliant_extraction():
             print("🎉 Screw Extracted.")
             self._navigate_to_bin(bin1_raw)
+            return True
 
-        return True
+        return False
 
     def _navigate_to_bin(self, bin1_raw):
         print("🗑️ [DROP-OFF] Navigating to Bin 1...")
@@ -426,7 +427,7 @@ class UnscrewSkill(Node):
         
         if world_bin:
             bx, by = world_bin.pose.position.x, world_bin.pose.position.y
-            bz = world_bin.pose.position.z + self.CONFIG["TOOL_LENGTH"] + 0.050 
+            bz = world_bin.pose.position.z + self.CONFIG["TOOL_LENGTH"] + 0.030 
             
             if self.moveit_backend.move_to_pose_robust(bx, by, bz, velocity=0.1):
                 self.wait_for_arm_settled()
@@ -448,12 +449,12 @@ def main(args=None):
         while rclpy.ok():
             target_id, target_label = None, None
             with node.data_lock:
-                if node.latest_targets: 
-                    target_id = node.latest_targets[0]['id']
+                if node.latest_targets:
+                    target_id = node.latest_targets[0].get('id')
                     target_label = node.latest_targets[0].get('label', 'screw')
             
             if target_id is not None:
-                node.execute_unscrew_command(target_id, target_label, interactive=True)
+                node.execute_unscrew_command(target_id, target_label, interactive=False)
                 with node.data_lock: node.latest_targets = []
             time.sleep(0.5)
     except KeyboardInterrupt: pass

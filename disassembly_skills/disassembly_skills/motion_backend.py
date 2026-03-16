@@ -198,6 +198,14 @@ class MotionBackend:
         self.is_activated = True
         self.node.get_logger().info(f"✅ Reset Sequence Dispatched for {self.group_name}.")
 
+    def start_servo(self, timeout_sec=5.0):
+        """Public: start servo mode with proper state tracking."""
+        return self._ensure_servo_mode()
+
+    def stop_servo(self, timeout_sec=5.0):
+        """Public: stop servo mode with proper state tracking."""
+        return self._ensure_trajectory_mode()
+
     def stop_immediately(self):
         """Immediately stops all Servo and MoveIt motion."""
         self._publish_zero_twist()
@@ -526,11 +534,7 @@ class MotionBackend:
         twist.header.frame_id = "world_world"
         twist.twist.linear.z = -abs(speed_mps)
         
-        # rate = self.node.create_rate(30) # Redundant with sleep
         start_t = time.time()
-        # Increased timeout to 30s as requested (effectively removing the tight limit)
-        timeout = timeout 
-        max_travel_m = 0.12
 
         while rclpy.ok() and (time.time() - start_t) < timeout:
             curr = self.current_joint_efforts.get(joint_name, 0.0)

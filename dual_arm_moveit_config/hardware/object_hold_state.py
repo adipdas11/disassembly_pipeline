@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, DurabilityPolicy
 from std_msgs.msg import Bool, String
 
 class ObjectHoldStateManager(Node):
@@ -18,26 +19,19 @@ class ObjectHoldStateManager(Node):
         self.state_string = "EMPTY"
         
         # --- Subscriptions ---
-        # Listens to the raw boolean flag from the Object Hold Skill
+        # Listens to the hold state published by skills (TRANSIENT_LOCAL to get latched values)
+        self.hold_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.create_subscription(
-            Bool, 
-            '/object_hold_status', 
-            self.hold_status_callback, 
-            10
+            Bool,
+            '/object_hold_state/is_held',
+            self.hold_status_callback,
+            self.hold_qos
         )
-        
+
         # --- Publishers ---
-        # 1. Publishes the raw boolean for logic/code checks
-        self.bool_pub = self.create_publisher(Bool, '/object_hold_state/is_held', 10)
-        
-        # 2. Publishes a human-readable string for UI or state machines (e.g., "HOLDING", "EMPTY")
+        # Publishes a human-readable string for UI or state machines (e.g., "HOLDING", "EMPTY")
         self.string_pub = self.create_publisher(String, '/object_hold_state/update', 10)
-        
-        # --- Timers ---
-        # Continuously broadcast the current state at 2Hz (every 0.5 seconds)
-        # This ensures late-joining nodes immediately know the state without waiting for a change.
-        self.create_timer(0.5, self.broadcast_state)
-        
+
         self.get_logger().info("✅ Object Hold State Manager Initialized. Current State: EMPTY")
 
     def hold_status_callback(self, msg: Bool):
@@ -58,13 +52,7 @@ class ObjectHoldStateManager(Node):
             self.broadcast_state()
 
     def broadcast_state(self):
-        """Publish the cached state to the Boolean and String topics."""
-        # Publish Boolean
-        bool_msg = Bool()
-        bool_msg.data = self.is_holding
-        self.bool_pub.publish(bool_msg)
-        
-        # Publish String
+        """Publish the cached state to the String topic."""
         str_msg = String()
         str_msg.data = self.state_string
         self.string_pub.publish(str_msg)

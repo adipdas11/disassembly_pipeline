@@ -2,11 +2,20 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
+from rclpy.qos import QoSProfile, DurabilityPolicy
 from std_msgs.msg import String, Bool
 from geometry_msgs.msg import Pose
-from std_srvs.srv import Trigger
-import json, time, threading, math
+import json, time, threading, math, os
 from disassembly_skills.motion_backend import MotionBackend
+
+HOLD_STATE_FILE = '/tmp/disassembly_hold_state'
+
+def write_hold_state(held):
+    try:
+        with open(HOLD_STATE_FILE, 'w') as f:
+            f.write('true' if held else 'false')
+    except Exception:
+        pass
 
 class PickupSkill(Node):
     def __init__(self):
@@ -18,9 +27,9 @@ class PickupSkill(Node):
         
         # Interfaces
         self.state_update_pub = self.create_publisher(String, '/robot_state/manip_arm/update', 10)
-        self.uf_servo_start_client = self.create_client(Trigger, '/uf_servo_node/start_servo')
         self.vision_reset_pub = self.create_publisher(String, '/vision/reset_tracker', 10)
-        self.hold_status_pub = self.create_publisher(Bool, '/object_hold_state/is_held', 10)
+        self.hold_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.hold_status_pub = self.create_publisher(Bool, '/object_hold_state/is_held', self.hold_qos)
         
         # Physical Parameters
         self.UF_TOOL_LENGTH = 0.26
@@ -44,7 +53,7 @@ class PickupSkill(Node):
         self.is_holding_object = False
         
         # Subscriptions
-        self.create_subscription(Bool, '/object_hold_state/is_held', self.hold_status_callback, 10)
+        self.create_subscription(Bool, '/object_hold_state/is_held', self.hold_status_callback, self.hold_qos)
         self.create_subscription(String, '/vision/agent_state', self.vision_callback, 10)
         
     def hold_status_callback(self, msg): 
@@ -54,22 +63,10 @@ class PickupSkill(Node):
         try:
             data = json.loads(msg.data.strip().strip("'").strip('"'))
             with self.data_lock: self.latest_targets = data.get("global_view", {}).get("objects", [])
-        except: pass
+        except Exception: pass
 
     def publish_state(self, s): 
         self.state_update_pub.publish(String(data=s))
-
-    def _start_uf_servo(self, timeout_sec=2.0):
-        if not self.uf_servo_start_client.wait_for_service(timeout_sec=timeout_sec):
-            self.get_logger().error("❌ /uf_servo_node/start_servo is unavailable.")
-            return False
-        future = self.uf_servo_start_client.call_async(Trigger.Request())
-        deadline = time.time() + timeout_sec
-        while rclpy.ok() and not future.done():
-            if time.time() >= deadline: return False
-            time.sleep(0.01)
-        response = future.result()
-        return response is not None and response.success
 
     def _current_uf_joint_positions(self):
         return {n: p for n, p in self.uf850.current_joint_positions.items() if n.startswith("u1_")}
@@ -114,6 +111,9 @@ class PickupSkill(Node):
     def execute_pickup(self, target_id, target_label):
         print(f"\n🛠️ [START] {target_label} Sequence (ID: {target_id})")
 
+        # Ensure clean trajectory mode (previous skill may have left servo on)
+        self.uf850.stop_servo()
+
         # --- STEP 0: PRE-CONDITION ---
         if self.is_holding_object:
             print("📦 [PRE-CONDITION] Active Hold Detected. Releasing...")
@@ -124,7 +124,8 @@ class PickupSkill(Node):
             ): return False
             self.wait_for_gripper(self.OPEN_DEG)
             self.hold_status_pub.publish(Bool(data=False))
-            
+            write_hold_state(False)
+
             print("⬆️ Vertical Retract (30cm)...")
             # Try Cartesian move first (cleanest)
             if not self.uf850.retract_relative_z(0.30, velocity=0.1):
@@ -158,7 +159,7 @@ class PickupSkill(Node):
         target = None
         with self.data_lock:
             # 1. Try to find by ID first
-            target = next((t for t in self.latest_targets if t['id'] == target_id), None)
+            target = next((t for t in self.latest_targets if t.get('id') == target_id), None)
             
             # 2. Fallback: If ID shifted after reset, find by Label
             if not target:
@@ -199,14 +200,14 @@ class PickupSkill(Node):
         self.wait_for_gripper(0.0)
 
         print(f"⬇️ Tactile Descent until force spike (Speed: {self.DESCENT_SPEED}m/s)...")
-        if not self._start_uf_servo(): return False
+        if not self.uf850.start_servo(): return False
         # Checking Joint 3 (index 2) as requested
         if not self.uf850.move_linear_z_with_torque_stop(self.DESCENT_SPEED, self.TORQUE_THRESHOLD, joint_index=2): 
             return False
         self.wait_for_arm_settled()
 
         print("⬆️ Retracting 10mm after contact...")
-        if not self._start_uf_servo(): return False
+        if not self.uf850.start_servo(): return False
         if not self.uf850.retract_servo_z_closed_loop(0.01, speed_mps=self.POST_GRASP_RETRACT_SPEED): return False
         self.wait_for_arm_settled()
 
@@ -219,9 +220,10 @@ class PickupSkill(Node):
         self.wait_for_gripper(self.CLOSE_DEG)
         self.publish_state("HOLDING")
         self.hold_status_pub.publish(Bool(data=True))
+        write_hold_state(True)
 
         print("⬆️ Final Retract 30mm...")
-        if not self._start_uf_servo(): return False
+        if not self.uf850.start_servo(): return False
         if not self.uf850.retract_servo_z_closed_loop(0.03, speed_mps=self.POST_GRASP_RETRACT_SPEED): return False
         self.wait_for_arm_settled()
 
@@ -238,6 +240,7 @@ class PickupSkill(Node):
         ): return False
         self.wait_for_gripper(self.OPEN_DEG)
         self.hold_status_pub.publish(Bool(data=False))
+        write_hold_state(False)
         
         if not self.uf850.move_to_joint_positions(self.UF_HOME_JOINTS, velocity=0.2): return False
         
@@ -254,7 +257,7 @@ def main(args=None):
             tid = None
             with node.data_lock:
                 pcbs = [t for t in node.latest_targets if 'pcb_main' in t.get('label', '').lower()]
-                if pcbs: tid = pcbs[0]['id']
+                if pcbs: tid = pcbs[0].get('id')
             if tid and node.execute_pickup(tid, "pcb_main"): break
             time.sleep(0.5)
     except KeyboardInterrupt: pass
