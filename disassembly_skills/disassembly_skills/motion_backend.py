@@ -663,6 +663,59 @@ class MotionBackend:
         self.node.get_logger().warn(f"⚠️ Servo retract timeout ({timeout}s)")
         return False
     
+    def move_servo_xy_closed_loop(self, dx, dy, speed_mps=0.03, timeout=30.0, stop_check=None):
+        """Moves a specific relative distance in World XY using TF feedback with optional stop condition."""
+        if not self._ensure_servo_mode():
+            return False
+        
+        target_link = self.default_ik_link
+        try:
+            start_tf = self.tf_buffer.lookup_transform('world_world', target_link, rclpy.time.Time())
+            sx, sy = start_tf.transform.translation.x, start_tf.transform.translation.y
+            target_dist = math.hypot(dx, dy)
+        except Exception as e:
+            self.node.get_logger().error(f"XY Servo Init Error: {e}")
+            return False
+
+        self.node.get_logger().info(f"🔄 Servo XY: Moving {target_dist*1000:.1f}mm in World XY at {speed_mps*1000:.1f}mm/s")
+
+        twist = TwistStamped()
+        twist.header.frame_id = "world_world"
+        
+        if target_dist > 0:
+            twist.twist.linear.x = (dx / target_dist) * speed_mps
+            twist.twist.linear.y = (dy / target_dist) * speed_mps
+        else:
+            return True
+
+        start_t = time.time()
+        while rclpy.ok() and (time.time() - start_t) < timeout:
+            # Check external stop condition (e.g. vision regained)
+            if stop_check and stop_check():
+                self._publish_zero_twist()
+                self.node.get_logger().info("🛑 XY Servo stopped by external condition.")
+                return "STOPPED"
+
+            try:
+                curr_tf = self.tf_buffer.lookup_transform('world_world', target_link, rclpy.time.Time())
+                cx, cy = curr_tf.transform.translation.x, curr_tf.transform.translation.y
+                
+                traveled = math.hypot(cx - sx, cy - sy)
+                if traveled >= target_dist:
+                    self._publish_zero_twist()
+                    self.node.get_logger().info(f"✅ XY Servo complete (Moved {traveled*1000:.1f}mm)")
+                    return True
+            except Exception:
+                pass
+            
+            twist.header.stamp = self.node.get_clock().now().to_msg()
+            self.servo_pub.publish(twist)
+            time.sleep(0.033)
+            
+        self._publish_zero_twist()
+        self.node.get_logger().warn(f"⚠️ XY Servo timeout ({timeout}s)")
+        return False
+    
     def _execute_joint_goal(self, js, vel):
         """Standardizes joint execution across arms, grippers, and sliders."""
         goal = MoveGroup.Goal()
