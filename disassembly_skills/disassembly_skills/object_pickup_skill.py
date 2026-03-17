@@ -10,6 +10,13 @@ from disassembly_skills.motion_backend import MotionBackend
 
 HOLD_STATE_FILE = '/tmp/disassembly_hold_state'
 
+def read_hold_state():
+    try:
+        with open(HOLD_STATE_FILE, 'r') as f:
+            return f.read().strip() == 'true'
+    except Exception:
+        return False
+
 def write_hold_state(held):
     try:
         with open(HOLD_STATE_FILE, 'w') as f:
@@ -89,7 +96,9 @@ class PickupSkill(Node):
 
     def wait_for_gripper(self, target_deg, timeout=7.0):
         target_rad = math.radians(target_deg)
-        start_t = time.time(); last_pos = 999.0; stall_timer = 0.0; is_closing = target_deg < 0
+        start_t = time.time(); last_pos = 999.0; stall_timer = 0.0
+        is_closing = target_deg < 0
+        is_opening = target_deg > 0
         while rclpy.ok() and (time.time() - start_t) < timeout:
             curr = self.gripper.current_joint_positions.get(self.JOINT_GRIPPER, 999)
             if curr == 999: time.sleep(0.1); continue
@@ -97,13 +106,14 @@ class PickupSkill(Node):
             if abs(curr - last_pos) < 0.002:
                 stall_timer += 0.1
                 if stall_timer >= 0.8:
-                    if is_closing:
-                        self.get_logger().info(f"✅ Grasp confirmed at {curr:.3f} rad.")
-                        return True
-                    else:
+                    if is_opening:
                         self.get_logger().warn(f"⚠️ Gripper STUCK while opening. Retrying with high force...")
                         self.gripper.move_to_joint_positions({self.JOINT_GRIPPER: target_rad}, gripper_force_n=100.0)
                         stall_timer = -2.0
+                    else:
+                        # Closing or neutral (0 rad) — stall means physically reached
+                        self.get_logger().info(f"✅ Gripper settled at {curr:.3f} rad.")
+                        return True
             else: stall_timer = 0.0
             last_pos = curr; time.sleep(0.1)
         return False
@@ -143,6 +153,30 @@ class PickupSkill(Node):
             if not self.uf850.move_to_joint_positions(self.UF_HOME_JOINTS, velocity=0.2): 
                 return False
             self.wait_for_arm_settled()
+
+        # --- STEP 0b: POSITION SAFETY CHECK ---
+        # If arm is not near home (e.g. hold state was cleared before this node started),
+        # retract 30cm and home before proceeding.
+        if not self.is_holding_object:
+            curr_joints = self._current_uf_joint_positions()
+            if curr_joints:
+                max_diff = max(abs(curr_joints.get(j, 0.0) - self.UF_HOME_JOINTS[j]) for j in self.UF_HOME_JOINTS)
+                if max_diff > 0.15:  # ~8.6 degrees tolerance
+                    print("⚠️ [PRE-CONDITION] Arm not at home. Retracting 30cm first...")
+                    if not self.uf850.retract_relative_z(0.30, velocity=0.1):
+                        print("⚠️ Cartesian retract failed. Falling back to Joint Move...")
+                        safe_joints = self.uf850.current_joint_positions.copy()
+                        safe_joints['u1_joint3'] = -1.8
+                        safe_joints['u1_joint2'] = -0.2
+                        if not self.uf850.move_to_joint_positions(safe_joints, velocity=0.2):
+                            print("❌ [CRITICAL] Both retract methods failed.")
+                            return False
+                    self.wait_for_arm_settled()
+
+                    print("🏠 Homing UF850...")
+                    if not self.uf850.move_to_joint_positions(self.UF_HOME_JOINTS, velocity=0.2):
+                        return False
+                    self.wait_for_arm_settled()
 
         # --- STEP 1: CLEAR WORKSPACE ---
         print("🏠 Clearing xArm5 workspace...")
@@ -251,7 +285,12 @@ def main(args=None):
     rclpy.init(args=args); node = PickupSkill()
     executor = MultiThreadedExecutor(); executor.add_node(node)
     threading.Thread(target=executor.spin, daemon=True).start()
-    time.sleep(1.0); node.vision_reset_pub.publish(String(data='reset'))
+    time.sleep(1.0)
+    # Check file-based hold state as fallback (survives process death)
+    if not node.is_holding_object and read_hold_state():
+        print("📦 Hold state detected from file (previous skill). Proceeding...")
+        node.is_holding_object = True
+    node.vision_reset_pub.publish(String(data='reset'))
     try:
         while rclpy.ok():
             tid = None

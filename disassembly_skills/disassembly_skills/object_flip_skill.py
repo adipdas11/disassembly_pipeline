@@ -188,10 +188,17 @@ def main(args=None):
         print("📦 Hold state detected from file (previous skill). Proceeding...")
         node.is_holding_object = True
     try:
-        while rclpy.ok():
-            if node.is_holding_object:
-                if node.execute_flip(interactive=True): break
-            time.sleep(0.5)
+        if not node.is_holding_object:
+            print("❌ No object held. Run object_hold_skill first.")
+        else:
+            success = node.execute_flip(interactive=False)
+            if success:
+                print("✅ Flip complete. Broadcasting hold state. Press Ctrl+C to exit.")
+                while rclpy.ok():
+                    node.publish_hold_status(True)
+                    time.sleep(1.0)
+            else:
+                print("❌ Flip failed.")
     except KeyboardInterrupt: pass
     finally: rclpy.shutdown()
 
