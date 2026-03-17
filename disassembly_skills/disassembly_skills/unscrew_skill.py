@@ -21,10 +21,10 @@ class UnscrewSkill(Node):
             "MM_PER_PIX": 0.000130,         # m/px (Vision calibration)
             
             # Descent & Alignment
-            "XY_SPEED_ALIGN": 0.01,        # m/s (Increased as requested)
-            "Z_SPEED_DESCENT": 0.01,       # m/s
-            "ALIGN_TOLERANCE_PX": 10.0,      # pixels
-            "FORCE_THRESHOLD": 3.0,         # N (Contact detection)
+            "XY_SPEED_ALIGN": 0.015,        # m/s (Increased as requested)
+            "Z_SPEED_DESCENT": 0.015,       # m/s
+            "ALIGN_TOLERANCE_PX": 4.0,      # pixels
+            "FORCE_THRESHOLD": 5.0,         # N (Contact detection)
 
             # Spiral Search
             "SPIRAL_TIMEOUT": 15.0,         # s (Vision fallback)
@@ -32,17 +32,13 @@ class UnscrewSkill(Node):
             "SPIRAL_GAP_MM": 5.0,           # mm (Increase per 2 sides)
             "SPIRAL_SPEED": 0.015,          # m/s
             
-            # Wiggle & Engagement
-            "WIGGLE_DIST": 0.001,           # m (1mm for closed-loop)
-            "WIGGLE_SPEED": 0.02,          # m/s
-            "WIGGLE_FORCE_THRESHOLD": 1.5,  # N (Seating confirmation)
-            
             # Extraction
             "EXTRACTION_MAX_TIME": 20.0,    # s
-            "EXTRACTION_COMPLIANCE_K": 0.008, # Velocity gain per Newton
+            "EXTRACTION_COMPLIANCE_K": 0.015, # Velocity gain per Newton (increased for responsiveness)
             "EXTRACTION_STABLE_TIME": 3.0,  # s
+            "EXTRACTION_Z_SPEED_CAP": 0.03, # m/s max compliant lift speed
             "POST_GRASP_RETRACT": 0.015,     # m (15mm as requested)
-            "RETRACT_SPEED": 0.03,          # m/s
+            "RETRACT_SPEED": 0.05,          # m/s
             
             # TF Frames
             "WORLD_FRAME": 'world_world',
@@ -159,57 +155,77 @@ class UnscrewSkill(Node):
 
             # --- CONTACT LOGIC ---
             if diff_fz > self.CONFIG["FORCE_THRESHOLD"]:
-                print(f"🎯 [CONTACT] Z-Force Contact Detected: {diff_fz:.2f}N.")
-                
-                # Seating Rotation
-                print("🔩 [SEATING] Rotating screwdriver briefly...")
-                self.tool_pub.publish(Int8(data=-1)) # Unscrew/Spin
-                time.sleep(0.5)
-                self.tool_pub.publish(Int8(data=0))
-                time.sleep(0.5)
+                print(f"[CONTACT] Z-Force Contact Detected: {diff_fz:.2f}N.")
+                time.sleep(0.3)  # Let FT sensor settle after impact
 
-                # Wiggle Test (3mm each direction closed-loop)
-                print(f"🔄 [WIGGLE] Verifying seating ({self.CONFIG['WIGGLE_DIST']*1000}mm distance)...")
-                with self.data_lock:
-                    w_base_fx = self.local_view.get('force_torque', {}).get('force', {}).get('x', 0.0)
-                    w_base_fy = self.local_view.get('force_torque', {}).get('force', {}).get('y', 0.0)
-                
-                # Directions: (dx, dy, axis, name)
-                w_directions = [
-                    (self.CONFIG["WIGGLE_DIST"], 0.0, 'x', "X+"),
-                    (-self.CONFIG["WIGGLE_DIST"], 0.0, 'x', "X-"),
-                    (0.0, self.CONFIG["WIGGLE_DIST"], 'y', "Y+"),
-                    (0.0, -self.CONFIG["WIGGLE_DIST"], 'y', "Y-")
-                ]
-                
-                success_count = 0
-                for dx, dy, axis, name in w_directions:
-                    # Move Out Closed-Loop
-                    self.moveit_backend.move_servo_xy_closed_loop(dx, dy, speed_mps=self.CONFIG["WIGGLE_SPEED"])
-                    time.sleep(0.1)
+                # --- XY CORRECTION ON SURFACE ---
+                # Refine alignment while on surface before seating check
+                print("[SURFACE ALIGN] Correcting XY on surface...")
+                align_deadline = time.time() + 3.0  # Max 3s for on-surface alignment
+                while rclpy.ok() and (time.time() < align_deadline):
                     with self.data_lock:
-                        curr_f = self.local_view.get('force_torque', {}).get('force', {})
-                        spike = abs(curr_f.get(axis, 0.0) - (w_base_fx if axis=='x' else w_base_fy))
-                    
-                    if spike > self.CONFIG["WIGGLE_FORCE_THRESHOLD"]:
-                        print(f"  ✅ {name} SUCCESS | Spike: {spike:.2f}N (Req: {self.CONFIG['WIGGLE_FORCE_THRESHOLD']}N)")
-                        success_count += 1
-                    else:
-                        print(f"  ❌ {name} FAIL    | Spike: {spike:.2f}N (Req: {self.CONFIG['WIGGLE_FORCE_THRESHOLD']}N)")
-                    
-                    # Return to center Closed-Loop
-                    self.moveit_backend.move_servo_xy_closed_loop(-dx, -dy, speed_mps=self.CONFIG["WIGGLE_SPEED"])
-                    time.sleep(0.1)
+                        al = copy.deepcopy(self.local_view)
+                    al_cam = al.get('local_view', {})
+                    al_screw = al_cam.get('screw_heads', [])
+                    al_cross = al_cam.get('crosshair', [320, 240])
+                    if not al_screw:
+                        print("[SURFACE ALIGN] No screw visible, skipping correction.")
+                        break
+                    al_ex = al_cross[0] - al_screw[0].get('center', [320, 240])[0]
+                    al_ey = al_cross[1] - al_screw[0].get('center', [320, 240])[1]
+                    al_dist = math.hypot(al_ex, al_ey)
+                    if al_dist <= self.CONFIG["ALIGN_TOLERANCE_PX"]:
+                        print(f"[SURFACE ALIGN] Aligned ({al_dist:.1f}px <= {self.CONFIG['ALIGN_TOLERANCE_PX']}px).")
+                        break
+                    # Small correction jog (XY only, no Z)
+                    cvx = (al_ey * self.CONFIG["MM_PER_PIX"]) * -1.0 * 2.0
+                    cvy = (al_ex * self.CONFIG["MM_PER_PIX"]) * -1.0 * 2.0
+                    MAX_XY = self.CONFIG["XY_SPEED_ALIGN"]
+                    cvx = max(min(cvx, MAX_XY), -MAX_XY)
+                    cvy = max(min(cvy, MAX_XY), -MAX_XY)
+                    self.moveit_backend.jog_cartesian_servo(cvx, cvy, 0.0, duration=0.15)
+                    time.sleep(0.05)
+                time.sleep(0.2)  # Settle after alignment correction
 
-                if success_count >= 3:
-                    print(f"✅ [WIGGLE PASS] {success_count}/4 wiggles seated bit.")
+                # --- SEATING CHECK: short unscrew with peak force tracking ---
+                print("[SEATING CHECK] Running short unscrew to verify bit engagement...")
+                with self.data_lock:
+                    pre_fz = self.local_view.get('force_torque', {}).get('force', {}).get('z', 0.0)
+
+                peak_fz_spike = 0.0
+                self.tool_pub.publish(Int8(data=-1))  # Unscrew spin
+                spin_start = time.time()
+                while time.time() - spin_start < 1.0:
+                    with self.data_lock:
+                        curr_fz = self.local_view.get('force_torque', {}).get('force', {}).get('z', 0.0)
+                    spike = abs(curr_fz - pre_fz)
+                    if spike > peak_fz_spike:
+                        peak_fz_spike = spike
+                    time.sleep(0.05)
+                self.tool_pub.publish(Int8(data=0))   # Stop
+                time.sleep(0.3)  # Settle after stop
+
+                # Check post-stop force (sustained load = thread engagement)
+                with self.data_lock:
+                    post_fz = self.local_view.get('force_torque', {}).get('force', {}).get('z', 0.0)
+                post_spike = abs(post_fz - pre_fz)
+                z_spike = max(peak_fz_spike, post_spike)
+                print(f"[SEATING CHECK] Z-force peak: {peak_fz_spike:.2f}N, post: {post_spike:.2f}N (threshold: 3.0N)")
+
+                if z_spike > 3.0:
+                    print(f"[ALIGNED] Bit is seated in screw head. Proceeding to extraction.")
                     return True
                 else:
                     retry_count += 1
-                    print(f"❌ [WIGGLE FAIL] {success_count}/4. Retry {retry_count}/{MAX_RETRIES}...")
-                    if retry_count > MAX_RETRIES: return False
-                    self.moveit_backend.retract_servo_z_closed_loop(0.010, speed_mps=0.03) # Use closed-loop Z-retract
-                    with self.data_lock: base_fz = self.local_view.get('force_torque', {}).get('force', {}).get('z', 0.0)
+                    print(f"[NOT ALIGNED] Bit not seated. Retry {retry_count}/{MAX_RETRIES}...")
+                    if retry_count > MAX_RETRIES:
+                        print("[ABORT] Max alignment retries exceeded.")
+                        return False
+                    # Retract 5mm and retry full descent + alignment
+                    self.moveit_backend.retract_servo_z_closed_loop(0.005, speed_mps=0.03)
+                    with self.data_lock:
+                        base_fz = self.local_view.get('force_torque', {}).get('force', {}).get('z', 0.0)
+                    prev_vx, prev_vy = 0.0, 0.0  # Reset smoothing for fresh alignment
                     continue
 
             # --- SEARCH / SERVOING LOGIC ---
@@ -329,10 +345,14 @@ class UnscrewSkill(Node):
                 print(f"🎉 [FREE] Extraction force stabilized at {peak_upward_force:.2f}N.")
                 break
             
-            # Compliant Speed calculate
-            z_speed = max(0.0, min(upward_force * self.CONFIG["EXTRACTION_COMPLIANCE_K"], 0.005))
-            self.moveit_backend.jog_cartesian_servo(0.0, 0.0, z_speed, duration=0.1)
-            time.sleep(0.05)
+            # Compliant Speed: proportional to upward force from unthreading
+            z_speed = max(0.0, min(upward_force * self.CONFIG["EXTRACTION_COMPLIANCE_K"],
+                                   self.CONFIG["EXTRACTION_Z_SPEED_CAP"]))
+            if int((time.time() - start_time) * 2) % 2 == 0:
+                print(f"  🔄 Extraction | Fz_up: {upward_force:.2f}N | Vz: {z_speed*1000:.1f}mm/s | Peak: {peak_upward_force:.2f}N",
+                      end='\r', flush=True)
+            self.moveit_backend.jog_cartesian_servo(0.0, 0.0, z_speed, duration=0.15)
+            time.sleep(0.03)
 
         # Stop unscrew motor
         self.tool_pub.publish(Int8(data=0))

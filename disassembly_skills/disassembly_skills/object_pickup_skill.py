@@ -118,7 +118,7 @@ class PickupSkill(Node):
             last_pos = curr; time.sleep(0.1)
         return False
 
-    def execute_pickup(self, target_id, target_label):
+    def execute_pickup(self, target_id, target_label, interactive=True):
         print(f"\n🛠️ [START] {target_label} Sequence (ID: {target_id})")
 
         # Ensure clean trajectory mode (previous skill may have left servo on)
@@ -241,7 +241,6 @@ class PickupSkill(Node):
         self.wait_for_arm_settled()
 
         print("⬆️ Retracting 10mm after contact...")
-        if not self.uf850.start_servo(): return False
         if not self.uf850.retract_servo_z_closed_loop(0.01, speed_mps=self.POST_GRASP_RETRACT_SPEED): return False
         self.wait_for_arm_settled()
 
@@ -257,7 +256,6 @@ class PickupSkill(Node):
         write_hold_state(True)
 
         print("⬆️ Final Retract 30mm...")
-        if not self.uf850.start_servo(): return False
         if not self.uf850.retract_servo_z_closed_loop(0.03, speed_mps=self.POST_GRASP_RETRACT_SPEED): return False
         self.wait_for_arm_settled()
 

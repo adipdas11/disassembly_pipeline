@@ -39,7 +39,7 @@ os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
 os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
 
 
-import math 
+import math, time
 from collections import deque, OrderedDict
 
 # =====================================================================
@@ -65,8 +65,8 @@ DASHBOARD_HEIGHT = 550
 PROCESSING_RATE_HZ = 30.0 
 
 # --- LOCAL VIEW ALIGNMENT SETTINGS ---
-LOCAL_CROSSHAIR_OFFSET_X = 0  # pixels
-LOCAL_CROSSHAIR_OFFSET_Y = 0   # pixels
+LOCAL_CROSSHAIR_OFFSET_X = -3  # pixels
+LOCAL_CROSSHAIR_OFFSET_Y = -10   # pixels
 
 # --- IMPORT AGENTS ---
 from vision_agent.agents.scout import ScoutAgent
@@ -249,6 +249,11 @@ class AgentNode(Node):
         self.frame_counter = 0 # To decouple Global vs Local frequencies
         self.last_scout_results = ([], None) # Cache for Global scout
 
+        # --- FPS TRACKING ---
+        self._fps_time = time.time()
+        self._fps_count = 0
+        self._fps_display = 0.0
+
         # --- SUBSCRIBERS ---
         self.sub_global = self.create_subscription(CompressedImage, '/camera/camera/color/image_raw/compressed', self.cb_global, 10)
         self.sub_depth = self.create_subscription(Image, '/camera/camera/aligned_depth_to_color/image_raw', self.cb_depth, 10)
@@ -380,6 +385,11 @@ class AgentNode(Node):
 
         cv2.rectangle(panel, (0, 0), (width, 45), (40, 40, 40), -1)
         draw_text(panel, "SYSTEM DASHBOARD", 20, 35, 1.0, (0, 255, 255), 2)
+
+        # FPS indicator (right side of header bar)
+        fps_val = self._fps_display
+        fps_color = (0, 255, 0) if fps_val >= 15 else (0, 255, 255) if fps_val >= 5 else (0, 0, 255)
+        draw_text(panel, f"FPS: {fps_val:.1f}", width - 200, 35, 0.9, fps_color, 2)
 
         col1_x = 20
         draw_text(panel, "DETECTED PARTS", col1_x, 80, 0.75, (200, 200, 200), 2)
@@ -737,6 +747,15 @@ class AgentNode(Node):
             self.get_logger().error(f"Vis Error: {e}")
         
         self.frame_counter += 1
+
+        # --- FPS calculation (update every 1 second) ---
+        self._fps_count += 1
+        now = time.time()
+        elapsed = now - self._fps_time
+        if elapsed >= 1.0:
+            self._fps_display = self._fps_count / elapsed
+            self._fps_count = 0
+            self._fps_time = now
 
 def main(args=None):
     rclpy.init(args=args)

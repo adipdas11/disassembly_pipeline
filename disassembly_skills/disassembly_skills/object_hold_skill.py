@@ -142,11 +142,20 @@ class ObjectHoldSkill(Node):
             time.sleep(0.1)
         return False
 
+    def _get_target_by_label(self, label):
+        with self.data_lock:
+            return next((t for t in self.latest_targets if label.lower() in t.get('label', '').lower()), None)
+
     def _run_hold_sequence(self, part_id, target_label, interactive):
         target_data = self._get_target_by_id(part_id)
 
+        # Fallback: ID may have shifted after vision reset — match by label
         if not target_data or 'xyz' not in target_data:
-            print(f"ABORT: Vision data for ID {part_id} is missing.")
+            print(f"⚠️ ID {part_id} not found. Searching by label '{target_label}'...")
+            target_data = self._get_target_by_label(target_label)
+
+        if not target_data or 'xyz' not in target_data:
+            print(f"ABORT: Vision data for '{target_label}' (ID {part_id}) is missing.")
             return False
 
         # --- Math & Transforms ---
@@ -202,11 +211,7 @@ class ObjectHoldSkill(Node):
 
         # --- STEP 2: CARTESIAN TACTILE DESCENT ---
         if interactive: input("STEP 2: Cartesian Tactile Descent? [Enter]")
-        print("Activating Servo for tactile descent...")
-        if not self.uf850.start_servo():
-            return False
-        time.sleep(1.0)
-
+        print("Starting tactile descent...")
         if not self.uf850.move_linear_z_with_torque_stop(self.DESCENT_SPEED, self.TORQUE_THRESHOLD, joint_index=4):
             print("[ERROR] Failed to touch down securely. Aborting.")
             return False

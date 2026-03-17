@@ -9,6 +9,7 @@ from geometry_msgs.msg import PoseStamped, Quaternion, Pose, TwistStamped
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float32, String
 from std_srvs.srv import Trigger
+from rclpy.callback_groups import ReentrantCallbackGroup
 import tf2_ros
 from tf2_ros import Buffer, TransformListener
 import tf2_geometry_msgs 
@@ -51,11 +52,16 @@ class MotionBackend:
             f"✅ MotionBackend: Initialized for {self.backend_kind} group '{self.group_name}'."
         )
         
+        # --- Reentrant callback group for service clients ---
+        # Prevents deadlocks in multi-node executor setups (master_agent)
+        # by allowing service responses to be processed in parallel with other callbacks.
+        self._service_cb_group = ReentrantCallbackGroup()
+
         # --- ROS 2 Interfaces ---
         self._action_client = ActionClient(self.node, MoveGroup, 'move_action')
         self._execute_client = ActionClient(self.node, ExecuteTrajectory, 'execute_trajectory')
-        self._ik_client = self.node.create_client(GetPositionIK, 'compute_ik')
-        self._cartesian_client = self.node.create_client(GetCartesianPath, 'compute_cartesian_path')
+        self._ik_client = self.node.create_client(GetPositionIK, 'compute_ik', callback_group=self._service_cb_group)
+        self._cartesian_client = self.node.create_client(GetCartesianPath, 'compute_cartesian_path', callback_group=self._service_cb_group)
         self._gripper_force_pub = None
         self.current_gripper_state = {}
         self.current_gripper_width_mm = 0.0
@@ -74,18 +80,32 @@ class MotionBackend:
             self.servo_pub = self.node.create_publisher(
                 TwistStamped, f'{self.servo_namespace}/delta_twist_cmds', 10
             )
-            self._servo_start_client = self.node.create_client(Trigger, f'{self.servo_namespace}/start_servo')
-            self._servo_stop_client = self.node.create_client(Trigger, f'{self.servo_namespace}/stop_servo')
+            self._servo_start_client = self.node.create_client(
+                Trigger, f'{self.servo_namespace}/start_servo',
+                callback_group=self._service_cb_group
+            )
+            self._servo_stop_client = self.node.create_client(
+                Trigger, f'{self.servo_namespace}/stop_servo',
+                callback_group=self._service_cb_group
+            )
         
         # --- TF2 Transformation Engine ---
-        self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self.node)
+        # Share one TF buffer/listener per node to avoid:
+        #   1. Multiple executor conflicts (spin_thread=True crashes)
+        #   2. N*2 duplicate /tf subscriptions starving the executor
+        if not hasattr(self.node, '_shared_tf_buffer'):
+            self.node._shared_tf_buffer = Buffer()
+            self.node._shared_tf_listener = TransformListener(self.node._shared_tf_buffer, self.node)
+        self.tf_buffer = self.node._shared_tf_buffer
 
         # --- Internal State Tracking ---
         self.current_joint_positions = {}
         self.current_joint_efforts = {}
         self.state_received = threading.Event()
-        self.joint_sub = self.node.create_subscription(JointState, '/joint_states', self._joint_state_callback, 10)
+        self.joint_sub = self.node.create_subscription(
+            JointState, '/joint_states', self._joint_state_callback, 10,
+            callback_group=self._service_cb_group
+        )
         
         self.is_activated = False
         self._in_servo_mode = False
@@ -134,31 +154,34 @@ class MotionBackend:
         msg.header.stamp = self.node.get_clock().now().to_msg()
         self.servo_pub.publish(msg)
 
-    def _call_trigger_sync(self, client, timeout_sec: float, label: str):
+    def _call_trigger_sync(self, client, timeout_sec: float, label: str, max_retries: int = 3):
         if client is None:
             self.node.get_logger().error(f"❌ {label}: servo is not configured for {self.group_name}.")
             return False
-        if not client.wait_for_service(timeout_sec=timeout_sec):
-            self.node.get_logger().error(f"❌ {label}: service unavailable.")
-            return False
-        future = client.call_async(Trigger.Request())
-        deadline = time.time() + timeout_sec
-        while rclpy.ok() and not future.done():
-            if time.time() >= deadline:
-                self.node.get_logger().error(f"❌ {label}: service call timeout.")
-                return False
-            time.sleep(0.01)
-        if not future.done():
-            self.node.get_logger().error(f"❌ {label}: request aborted before completion.")
-            return False
-        response = future.result()
-        if response is None:
-            self.node.get_logger().error(f"❌ {label}: empty service response.")
-            return False
-        if not response.success:
-            self.node.get_logger().error(f"❌ {label}: {response.message}")
-            return False
-        return True
+        for attempt in range(1, max_retries + 1):
+            if not client.wait_for_service(timeout_sec=max(timeout_sec, 5.0)):
+                self.node.get_logger().warn(f"⚠️ {label}: service unavailable (attempt {attempt}/{max_retries}).")
+                continue
+            future = client.call_async(Trigger.Request())
+            call_timeout = max(timeout_sec, 5.0)
+            deadline = time.time() + call_timeout
+            while rclpy.ok() and not future.done():
+                if time.time() >= deadline:
+                    break
+                time.sleep(0.01)
+            if not future.done():
+                self.node.get_logger().warn(f"⚠️ {label}: service call timeout (attempt {attempt}/{max_retries}).")
+                continue
+            response = future.result()
+            if response is None:
+                self.node.get_logger().warn(f"⚠️ {label}: empty response (attempt {attempt}/{max_retries}).")
+                continue
+            if not response.success:
+                self.node.get_logger().warn(f"⚠️ {label}: {response.message} (attempt {attempt}/{max_retries}).")
+                continue
+            return True
+        self.node.get_logger().error(f"❌ {label}: failed after {max_retries} attempts.")
+        return False
 
     def _configure_move_group_request(self, goal, velocity):
         """Apply consistent planning bounds so failed plans return promptly."""
@@ -207,8 +230,11 @@ class MotionBackend:
         return self._ensure_trajectory_mode()
 
     def stop_immediately(self):
-        """Immediately stops all Servo and MoveIt motion."""
+        """Immediately stops all Servo and MoveIt motion.
+        Marks servo as inactive since MoveIt Servo will internally timeout
+        after receiving zero-twist, making the flag stale."""
         self._publish_zero_twist()
+        self._in_servo_mode = False
         self.node.get_logger().error("🛑 MOTION STOPPED")
 
     # --- Controller Mode Switching ---
@@ -228,27 +254,64 @@ class MotionBackend:
             return False
         if self._in_servo_mode:
             return True
+        # Clean slate: stop servo first (best-effort, ignores failure).
+        # This handles the case where stop_immediately() only published
+        # zero-twist without calling the stop service, leaving servo in
+        # an ambiguous internal state where start_servo would fail with
+        # "already running".
+        if self._servo_stop_client is not None:
+            try:
+                if self._servo_stop_client.wait_for_service(timeout_sec=1.0):
+                    future = self._servo_stop_client.call_async(Trigger.Request())
+                    deadline = time.time() + 2.0
+                    while rclpy.ok() and not future.done():
+                        if time.time() >= deadline:
+                            break
+                        time.sleep(0.01)
+            except Exception:
+                pass
+            time.sleep(0.1)
         if not self._call_trigger_sync(self._servo_start_client, timeout_sec=2.0, label="start_servo"):
             return False
         self._in_servo_mode = True
-        self.node.get_logger().info(f"🔄 Entering servo mode (controller stays active).")
+        # Warm-up: MoveIt Servo needs time after start for its internal twist
+        # subscriber to match the existing publisher (DDS discovery latency).
+        # Publish zero-twist for 0.5s to ensure servo is processing commands
+        # before any caller publishes real twist velocities.
+        for _ in range(15):
+            self._publish_zero_twist()
+            time.sleep(0.033)
+        self.node.get_logger().info(f"🔄 Entering servo mode (warmed up).")
         return True
 
     def _ensure_trajectory_mode(self):
         """Prepare for planned trajectory execution. Flush any lingering servo
         commands by sending zero-twist, then explicitly stop the servo node
-        to switch the xArm driver back to position control mode."""
-        if not self._in_servo_mode:
-            return True
+        to switch the xArm driver back to position control mode.
+
+        Always stops servo via service call (best-effort) even if _in_servo_mode
+        is False, because stop_immediately() and retract_servo_z_closed_loop
+        clear the flag without calling the stop service — leaving servo
+        internally running and interfering with planned trajectory execution.
+        """
         if not self._servo_supported():
             self._in_servo_mode = False
             return True
-            
-        # Flush servo: send zero-twist to stop any residual servo motion
+
+        # Always flush and stop — servo may be running even if flag is False
         self._publish_zero_twist()
-        time.sleep(0.1)  # Brief settle for servo to process the halt
-        if not self._call_trigger_sync(self._servo_stop_client, timeout_sec=2.0, label="stop_servo"):
-            return False
+        time.sleep(0.1)
+        if self._servo_stop_client is not None:
+            try:
+                if self._servo_stop_client.wait_for_service(timeout_sec=1.0):
+                    future = self._servo_stop_client.call_async(Trigger.Request())
+                    deadline = time.time() + 2.0
+                    while rclpy.ok() and not future.done():
+                        if time.time() >= deadline:
+                            break
+                        time.sleep(0.01)
+            except Exception:
+                pass
         self._in_servo_mode = False
         self.node.get_logger().info(f"🔄 Entering trajectory mode (servo stopped).")
         return True
@@ -548,7 +611,10 @@ class MotionBackend:
             if (time.time() - start_t) > 0.2:
                 # Reduced multiplier to 2.0x (3.0 * 2.0 = 6Nm). 15Nm was too high to trigger reliably.
                 if spike > (threshold_nm * 2.0):
-                    self.stop_immediately()
+                    # Stop motion but keep servo mode alive so the next
+                    # servo operation (e.g. retract) can continue without
+                    # a full stop/restart cycle that can fail on back-to-back calls.
+                    self._publish_zero_twist()
                     self.node.get_logger().warn(f"🎯 CONTACT DETECTED: {spike:.3f}Nm spike (Threshold: {threshold_nm*2.0}Nm).")
                     return True
 
@@ -611,61 +677,107 @@ class MotionBackend:
             self.node.get_logger().error(f"TF Error: {e}")
             return None
 
-    def retract_servo_z_closed_loop(self, distance, speed_mps=0.03, timeout=60.0):
+    def retract_servo_z_closed_loop(self, distance, speed_mps=0.03, timeout=None):
+        """Closed-loop Z retract using TF feedback.
+
+        Publishes twist and monitors TF continuously. Stops when TF confirms
+        the target distance (with 2mm tolerance for TF lag). Uses stall
+        detection to avoid waiting forever if the robot physically can't
+        move further. Returns True if >= 85% of distance was achieved.
+        """
         if not self._ensure_servo_mode():
             return False
+
         target_link = self.default_ik_link
+        abs_distance = abs(distance)
+        # No hard cap — closed-loop TF feedback with tolerance and stall
+        # detection prevents overshoot. MoveIt Servo internally scales
+        # velocity near singularities/limits anyway.
+        cmd_speed = speed_mps
+        # MoveIt Servo often delivers only ~2-5mm/s effective speed due to
+        # internal velocity scaling near singularities/limits.
+        # Generous timeout: assume worst-case 1mm/s + 5s buffer.
+        if timeout is None:
+            timeout = max(abs_distance / 0.001, 10.0) + 5.0
+
         try:
-            start_z = self.tf_buffer.lookup_transform('world_world', target_link, rclpy.time.Time()).transform.translation.z
-            target_z = start_z + distance
+            start_tf = self.tf_buffer.lookup_transform('world_world', target_link, rclpy.time.Time())
+            start_z = start_tf.transform.translation.z
         except Exception as e:
-            self.node.get_logger().error(f"Retract TF Init Error: {e}")
+            self.node.get_logger().error(f"Z Retract TF Init Error: {e}")
             return False
 
-        self.node.get_logger().info(f"🔄 Servo retract: start_z={start_z:.4f}, target_z={target_z:.4f}, dist={distance:.4f}")
+        self.node.get_logger().info(
+            f"🔄 Servo Z retract: {abs_distance*1000:.1f}mm at {cmd_speed*1000:.1f}mm/s "
+            f"(start_z={start_z:.4f}, timeout={timeout:.0f}s)")
 
         twist = TwistStamped()
         twist.header.frame_id = "world_world"
-        twist.twist.linear.z = speed_mps if distance > 0 else -abs(speed_mps)
+        twist.twist.linear.z = cmd_speed if distance > 0 else -cmd_speed
+
+        # TF tolerance: accept within 2mm of target (TF lags ~2-3mm behind)
+        tf_tolerance = 0.002
+        # Stall detection: if TF shows no movement for 3s, robot is stuck
+        last_z = start_z
+        last_change_t = time.time()
+        stall_threshold = 0.0005  # 0.5mm minimum change to count as moving
 
         start_t = time.time()
-        tf_fail_count = 0
-        motion_checked = False
         while rclpy.ok() and (time.time() - start_t) < timeout:
             try:
-                curr_z = self.tf_buffer.lookup_transform('world_world', target_link, rclpy.time.Time()).transform.translation.z
-                tf_fail_count = 0  # reset on success
+                curr_tf = self.tf_buffer.lookup_transform('world_world', target_link, rclpy.time.Time())
+                curr_z = curr_tf.transform.translation.z
+                traveled = abs(curr_z - start_z)
 
-                # Motion sanity check at 3s — warn but don't abort
-                if not motion_checked and (time.time() - start_t) > 3.0:
-                    motion_checked = True
-                    moved = abs(curr_z - start_z)
-                    if moved < 0.001:  # Less than 1mm in 3s = truly stuck
-                        self._publish_zero_twist()
-                        self.node.get_logger().error(
-                            f"❌ Servo retract aborted: zero motion after 3s "
-                            f"(moved {moved*1000:.1f}mm). Servo may be inactive.")
-                        return False
-                    elif moved < abs(distance) * 0.10:  # Less than 10% = slow but moving
-                        self.node.get_logger().warn(
-                            f"⚠️ Slow servo retract: {moved*1000:.1f}mm in 3s. Continuing...")
-
-                if (distance > 0 and curr_z >= target_z) or (distance < 0 and curr_z <= target_z):
+                # Target reached (with tolerance for TF lag)
+                if traveled >= abs_distance - tf_tolerance:
                     self._publish_zero_twist()
-                    self.node.get_logger().info(f"✅ Servo retract complete at z={curr_z:.4f}")
+                    self._in_servo_mode = False
+                    self.node.get_logger().info(
+                        f"✅ Z retract complete at z={curr_z:.4f} "
+                        f"(moved {traveled*1000:.1f}mm)")
                     return True
-            except Exception as e:
-                tf_fail_count += 1
-                if tf_fail_count >= 30:  # ~1 second of consecutive failures
+
+                # Stall detection: if position hasn't changed in 3s, stop early
+                if abs(curr_z - last_z) > stall_threshold:
+                    last_z = curr_z
+                    last_change_t = time.time()
+                elif (time.time() - last_change_t) > 3.0 and traveled > 0.001:
                     self._publish_zero_twist()
-                    self.node.get_logger().error(f"❌ Servo retract aborted: TF failed {tf_fail_count} times: {e}")
-                    return False
+                    self._in_servo_mode = False
+                    pct = (traveled / abs_distance) * 100
+                    self.node.get_logger().info(
+                        f"✅ Z retract stall-stop at z={curr_z:.4f} "
+                        f"(moved {traveled*1000:.1f}mm, {pct:.0f}% of target)")
+                    return traveled >= abs_distance * 0.85
+
+            except Exception:
+                pass
+
             twist.header.stamp = self.node.get_clock().now().to_msg()
             self.servo_pub.publish(twist)
             time.sleep(0.033)
+
         self._publish_zero_twist()
-        self.node.get_logger().warn(f"⚠️ Servo retract timeout ({timeout}s)")
-        return False
+        self._in_servo_mode = False
+        # On timeout: check if close enough (>= 85% is acceptable)
+        try:
+            end_tf = self.tf_buffer.lookup_transform('world_world', target_link, rclpy.time.Time())
+            end_z = end_tf.transform.translation.z
+            actual_mm = abs(end_z - start_z) * 1000
+            pct = (actual_mm / (abs_distance * 1000)) * 100
+            close_enough = actual_mm >= abs_distance * 1000 * 0.85
+            level = "info" if close_enough else "warn"
+            msg = (f"Z retract {'complete' if close_enough else 'timeout'} "
+                   f"(moved {actual_mm:.1f}mm of {abs_distance*1000:.1f}mm, {pct:.0f}%)")
+            if close_enough:
+                self.node.get_logger().info(f"✅ {msg}")
+            else:
+                self.node.get_logger().warn(f"⚠️ {msg}")
+            return close_enough
+        except Exception:
+            self.node.get_logger().warn(f"⚠️ Z retract timeout ({timeout:.0f}s)")
+            return False
     
     def move_servo_xy_closed_loop(self, dx, dy, speed_mps=0.03, timeout=30.0, stop_check=None):
         """Moves a specific relative distance in World XY using TF feedback with optional stop condition."""

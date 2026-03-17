@@ -118,10 +118,7 @@ class ObjectFlipSkill(Node):
 
         # --- STEP 1: CLOSED-LOOP LIFT ---
         print(f"🚀 STEP 1: Retracting {self.RETRACT_Z_HEIGHT*100}cm (Closed-Loop)...")
-        if not self.uf850.start_servo():
-            return False
-        
-        if not self.uf850.retract_servo_z_closed_loop(self.RETRACT_Z_HEIGHT, speed_mps=self.RETRACT_VELOCITY): 
+        if not self.uf850.retract_servo_z_closed_loop(self.RETRACT_Z_HEIGHT, speed_mps=self.RETRACT_VELOCITY):
             return False
         self.wait_for_arm_settled()
 
@@ -166,8 +163,9 @@ class ObjectFlipSkill(Node):
         self.wait_for_gripper(self.OPEN_DEG)
 
         print("🗜️ STEP 5: Re-grasping...")
+        time.sleep(0.5)  # Let gripper controller clear previous trajectory
         if not self.gripper.move_to_joint_positions(
-            {self.JOINT_GRIPPER: math.radians(self.CLOSE_DEG)}, 
+            {self.JOINT_GRIPPER: math.radians(self.CLOSE_DEG)},
             gripper_force_n=self.GRIPPER_CLOSE_FORCE_N
         ): return False
         self.wait_for_gripper(self.CLOSE_DEG)

@@ -120,7 +120,6 @@ class FlipDropSkill(Node):
         # 1. RETRACT
         print("🚀 STEP 1: Vertical Retract (Closed-Loop)...")
         self.publish_state("FLIPPING")
-        if not self.uf850.start_servo(): return False
         if not self.uf850.retract_servo_z_closed_loop(self.RETRACT_Z_HEIGHT, speed_mps=self.RETRACT_VELOCITY): return False
         self.wait_for_arm_settled()
 
@@ -173,6 +172,7 @@ class FlipDropSkill(Node):
         ): return False
         self.wait_for_gripper(self.OPEN_DEG)
 
+        time.sleep(0.5)  # Let gripper controller clear previous trajectory
         if not self.gripper.move_to_joint_positions(
             {self.JOINT_GRIPPER: math.radians(self.CLOSE_DEG)},
             gripper_force_n=self.GRIPPER_CLOSE_FORCE_N
