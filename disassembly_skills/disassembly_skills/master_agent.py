@@ -203,7 +203,7 @@ class MasterAgentNode(Node):
         self.MISSION_PROMPT = (
             "Your objective is to fully disassemble the assembly in the current scene. "
             "First, analyze the vision data to deduce which object serves as the primary structural base. "
-            "PRIORITY RULE: If any screws are visible, you MUST unscrew them all before using any other tools for part removal. "
+            "PRIORITY RULE: If any screws or word containing 'screw' in the json are visible, you MUST unscrew them all before using any other tools for part removal. "
             "Next, extract all removable sub-components or fasteners visible on the current side one by one. "
             "VERIFICATION RULE: After attempting to remove a macro-component, you must check the next vision frame. "
             "If that specific part is still present, you MUST retry the action. (Note: You do not need to individually verify screws). "
