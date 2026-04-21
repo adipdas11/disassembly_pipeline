@@ -18,7 +18,7 @@ def generate_launch_description():
             name='tool_camera',
             namespace='tool_cam',
             parameters=[{
-                'video_device': '/dev/video10',  
+                'video_device': '/dev/video4',  
                 'framerate': 30.0,
                 'image_width': 640,
                 'image_height': 480,

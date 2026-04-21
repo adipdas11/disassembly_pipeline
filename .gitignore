@@ -58,3 +58,6 @@ log/
 # API Keys
 **/api_key.txt
 **/groq_api_key.txt
+
+# Directories
+**/vision_training/data_collection/data
