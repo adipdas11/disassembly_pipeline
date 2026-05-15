@@ -544,6 +544,7 @@ class AgentNode(Node):
             valid_objects = []
             rects = []
             labels = [] 
+            rejected_objects = []
             
             for obj in raw_objects:
                 box = obj.get('box') or obj.get('bbox') or obj.get('xyxy')
@@ -561,7 +562,20 @@ class AgentNode(Node):
                     rects.append(box) 
                     labels.append(label) 
                 else:
+                    rejected_objects.append(obj)
                     cv2.rectangle(vis_global, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (0, 0, 255), 1)
+
+            if not valid_objects and rejected_objects:
+                self.get_logger().warn(
+                    "Workspace filter rejected all detections; using raw global detections as fallback.",
+                    throttle_duration_sec=2.0,
+                )
+                valid_objects = rejected_objects
+                rects = [
+                    obj.get('box') or obj.get('bbox') or obj.get('xyxy')
+                    for obj in valid_objects
+                ]
+                labels = [obj.get('label') for obj in valid_objects]
 
             tracked_objects = self.tracker.update(rects, labels)
             

@@ -35,6 +35,7 @@ setup(
             'object_flip_drop_skill = disassembly_skills.object_flip_drop_skill:main',
             'object_pickup_skill = disassembly_skills.object_pickup_skill:main',
             'hdd_disassembly_script = disassembly_skills.hdd_disassembly_script:main',
+            'hdd_react_ui_script = disassembly_skills.hdd_react_ui_script:main',
             'unscrew_skill = disassembly_skills.unscrew_skill:main',
             'master_agent = disassembly_skills.master_agent:main',
             'groq_master_agent = disassembly_skills.groq_master_agent:main',

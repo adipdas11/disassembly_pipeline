@@ -43,7 +43,7 @@ class ObjectFlipSkill(Node):
         self.DESCENT_SPEED = 0.2              
         self.RETRACT_VELOCITY = 0.5
         self.GRIPPER_OPEN_FORCE_N = 40.0      
-        self.GRIPPER_CLOSE_FORCE_N = 100.0     
+        self.GRIPPER_CLOSE_FORCE_N = 120.0
         
         self.is_holding_object = False
         self.hold_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)

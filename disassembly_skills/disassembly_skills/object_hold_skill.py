@@ -45,7 +45,7 @@ class ObjectHoldSkill(Node):
         self.OPEN_DEG = 35.0
         self.CLOSE_DEG = -35.0
         self.GRIPPER_OPEN_FORCE_N = 40.0
-        self.GRIPPER_CLOSE_FORCE_N = 100.0
+        self.GRIPPER_CLOSE_FORCE_N = 120.0
         self.TORQUE_THRESHOLD = 3.0
         self.DESCENT_SPEED = 0.09
         self.RETRACT_VELOCITY = 0.05
@@ -185,8 +185,8 @@ class ObjectHoldSkill(Node):
         tx = wx - (off * math.cos(v_rad))
         ty = wy - (off * math.sin(v_rad))
         hz = wz + self.HOVER_Z_OFFSET + (self.TOOL_LENGTH * math.sin(tilt))
-        hover_x = tx - 0.01
-        hover_y = ty - 0.005
+        hover_x = tx - 0.005
+        hover_y = ty + 0.01
 
         # --- STEP 1: DIRECT HOVER ---
         self.publish_state("MOVING")

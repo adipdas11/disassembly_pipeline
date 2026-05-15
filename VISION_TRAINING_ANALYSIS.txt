@@ -1,0 +1,694 @@
+================================================================================
+  VISION TRAINING ANALYSIS — HDD DISASSEMBLY PIPELINE
+  Document covers: camera scanning strategy, defect/object detection types,
+  preprocessing pipeline, normalization, and intermediate visual results.
+  Source: vision_training/ notebooks + Roboflow dataset configs + agent nodes.
+================================================================================
+
+--------------------------------------------------------------------------------
+  TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+
+  1. System Overview — Three-Model Architecture
+  2. Q1 — Global Camera: Scan Once or Continuous?
+         Micro Camera: Zigzag Scan or Fixed?
+  3. Q2 — What Do Detections Look Like? Are Types Fixed?
+  4. Q3 — Is Normalization in Preprocessing? Intermediate Visual Results?
+  5. Roboflow Dataset Configs — Detailed Parameter Breakdown
+  6. Training Pipeline — Step-by-Step for All Three Projects
+  7. Achieved Model Performance
+
+================================================================================
+  SECTION 1 — SYSTEM OVERVIEW: THREE-MODEL ARCHITECTURE
+================================================================================
+
+The vision system is split into three specialized AI agents, each with its own
+trained model, camera source, and inference role. They are coordinated by the
+AgentNode (agent_node_v2.py) running at 30Hz.
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                        VISION SYSTEM OVERVIEW                          │
+  │                                                                         │
+  │  Camera Source        Agent         Model              Task             │
+  │  ─────────────────────────────────────────────────────────────────────  │
+  │  Global (overhead)    ScoutAgent    RF-DETR Large      14-class detect  │
+  │  Micro (tool-mount)   SniperAgent   RF-DETR Small      3-class detect   │
+  │  Global (overhead)    RefereeAgent  YOLO11n-cls        2-class classify │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+  Project 1 (Segmentation/) → trains ScoutAgent  → RF-DETR Large
+  Project 2 (Tool-Screw/)   → trains SniperAgent → RF-DETR Small
+  Project 3 (Classification/)→ trains RefereeAgent→ YOLO11n-cls
+
+  Each project has its own Roboflow workspace, preprocessing config,
+  augmentation strategy, and training notebook (rfdetr-train.ipynb /
+  yolo11-train.ipynb).
+
+
+================================================================================
+  SECTION 2 — Q1: DOES THE GLOBAL CAMERA SCAN ONCE?
+                    DOES THE MICRO CAMERA SCAN IN A ZIGZAG?
+================================================================================
+
+SHORT ANSWER:
+  Neither camera physically moves in a scan pattern during normal operation.
+  Both are fixed-mount cameras that run continuous inference. The "zigzag" or
+  "spiral" motion only happens as a recovery fallback inside unscrew_skill.py
+  when the micro camera loses sight of a screw.
+
+────────────────────────────────────────────────────────────────────────────────
+  2.1  GLOBAL CAMERA (Scout / RF-DETR Large)
+────────────────────────────────────────────────────────────────────────────────
+
+  Physical setup:
+    The global camera is a fixed overhead camera looking down at the entire
+    workspace. It does not move. It captures the full HDD tray, including all
+    visible screws, PCB, connectors, and bin zones simultaneously in one frame.
+
+  How often does it run?
+    In agent_node_v2.py (the active version), Scout inference is CACHED:
+
+      if frame_count % 6 == 0:
+          scout_results = scout_agent.scan(frame)   ← runs every 6th frame
+      else:
+          scout_results = last_scout_results         ← uses cached result
+
+    At 30Hz loop rate, this means Scout actually runs at ~5Hz effective rate.
+    This is intentional — RF-DETR Large is computationally heavy (1088px
+    resolution), and the global scene doesn't change fast enough to need
+    per-frame updates. Caching saves significant GPU time.
+
+  So: the global camera does NOT scan once. It runs continuously but at a
+  reduced effective rate (every 6 frames). Each "scan" is a single forward
+  pass of RF-DETR Large on the current overhead frame.
+
+────────────────────────────────────────────────────────────────────────────────
+  2.2  MICRO CAMERA (Sniper / RF-DETR Small)
+────────────────────────────────────────────────────────────────────────────────
+
+  Physical setup:
+    The micro camera is a USB camera mounted on the xArm5 tool head
+    (managed by the tool_camera_pkg ROS 2 package). It moves with the robot
+    arm, providing a close-up view of the screw the arm is currently targeting.
+
+  How often does it run?
+    In agent_node_v2.py, Sniper runs EVERY frame — no caching:
+
+      sniper_results = sniper_agent.target(frame)   ← runs at full 30Hz
+
+    RF-DETR Small at 640px resolution is lightweight enough for this rate.
+
+  Is there a zigzag pattern?
+    NO — during normal operation, the micro camera just points at whatever
+    the xArm5 is hovering over. There is no programmatic zigzag scan.
+
+    HOWEVER — inside unscrew_skill.py, there is a SPIRAL SEARCH RECOVERY:
+
+      When the Sniper cannot find a Screw_Head in the current frame during
+      the staircase descent phase, the skill executes small spiral offsets
+      in X and Y to physically move the arm (and thus the camera) around the
+      last known position:
+
+        for dx, dy in spiral_offsets:
+            move_arm(x + dx, y + dy)
+            check_sniper_again()
+
+      This is a RECOVERY behaviour only — it activates when vision fails, not
+      as the primary scanning strategy. Normal operation is: arm hovers over
+      known screw position → Sniper confirms → arm descends.
+
+  Primary alignment strategy (NOT zigzag):
+    The normal visual servo loop in unscrew_skill.py is sequential axis:
+      Step 1: Align Y axis first (move arm in Y until Screw_Head centred)
+      Step 2: Align X axis second (move arm in X until Screw_Head centred)
+      Step 3: Apply funnel Z speed (slow descent as it gets closer)
+    This is a cross-hair convergence, not a zigzag.
+
+────────────────────────────────────────────────────────────────────────────────
+  2.3  SUMMARY TABLE
+────────────────────────────────────────────────────────────────────────────────
+
+  ┌───────────────┬──────────────┬─────────────────────────────────────────┐
+  │ Camera        │ Scan pattern │ Detail                                  │
+  ├───────────────┼──────────────┼─────────────────────────────────────────┤
+  │ Global        │ Fixed mount  │ Overhead, full scene, runs every 6th    │
+  │ (overhead)    │ No movement  │ frame (~5Hz). No physical scanning.     │
+  ├───────────────┼──────────────┼─────────────────────────────────────────┤
+  │ Micro         │ Moves with   │ Tool-mounted, close-up. Runs every      │
+  │ (tool-mount)  │ xArm5        │ frame (30Hz). No zigzag. Spiral only    │
+  │               │              │ as fallback if screw is lost.           │
+  └───────────────┴──────────────┴─────────────────────────────────────────┘
+
+
+================================================================================
+  SECTION 3 — Q2: WHAT DO DETECTIONS LOOK LIKE? ARE TYPES FIXED?
+================================================================================
+
+SHORT ANSWER:
+  Yes — all detection types are completely fixed and predetermined. This is a
+  closed-set detection system, not open-set or anomaly detection. Every class
+  was manually annotated in Roboflow and baked into the model during training.
+  The system cannot detect anything outside its trained classes.
+
+────────────────────────────────────────────────────────────────────────────────
+  3.1  PROJECT 1 — SCOUT (Global Camera, RF-DETR Large)
+────────────────────────────────────────────────────────────────────────────────
+
+  Roboflow project : hdd_global_scout (version 3)
+  Model            : RF-DETR Large  (rf-detr-large-2026.pth)
+  Resolution       : 1088px (AI-safe equivalent of 1080)
+  Output format    : Bounding boxes (COCO format) over the full overhead frame
+
+  Number of classes: 14
+
+  The 14 classes represent the distinct physical components visible from the
+  overhead global view of an HDD during disassembly. These include items such
+  as screws at various positions, the PCB, connectors, the drive body, and
+  potentially partially disassembled states. The exact class names are stored
+  in the data.yaml downloaded from Roboflow (hdd_global_scout).
+
+  What the output looks like:
+    - Bounding boxes drawn around each visible component
+    - Each box has a class label and confidence score (threshold ≥ 0.4)
+    - Multiple objects detected simultaneously in one frame
+    - Published as JSON inside /vision/agent_state topic
+
+  Important note on annotation format:
+    The original Roboflow labels were POLYGON annotations (segmentation masks).
+    The training notebook CONVERTS these polygons to bounding boxes:
+      - Extract all X,Y polygon vertices
+      - Compute min/max X and min/max Y
+      - Create bounding box: cx = (minX+maxX)/2, cy = (minY+maxY)/2, w, h
+    This means the model was trained on bounding boxes despite the source data
+    being polygon-annotated. Polygon detail is lost but bounding box accuracy
+    is preserved.
+
+────────────────────────────────────────────────────────────────────────────────
+  3.2  PROJECT 2 — SNIPER (Micro Camera, RF-DETR Small)
+────────────────────────────────────────────────────────────────────────────────
+
+  Roboflow project : hdd_local_sniper (version 3)
+  Model            : RF-DETR Small  (rf-detr-small.pth)
+  Resolution       : 640px
+  Output format    : Bounding boxes, close-up view from tool camera
+
+  Number of classes: EXACTLY 3 — these are fixed, no more, no less
+
+  ┌─────────────────┬─────────────────────────────────────────────────────┐
+  │ Class           │ What it represents                                  │
+  ├─────────────────┼─────────────────────────────────────────────────────┤
+  │ Screw_Head      │ The top face of a screw, seen from above. Used to   │
+  │                 │ centre the xArm5 screwdriver over it. Center point  │
+  │                 │ (cx,cy) extracted and published as target.          │
+  ├─────────────────┼─────────────────────────────────────────────────────┤
+  │ Hole            │ An empty screw hole — screw has already been        │
+  │                 │ removed. Used to avoid re-attempting on holes and   │
+  │                 │ to confirm successful extraction.                   │
+  ├─────────────────┼─────────────────────────────────────────────────────┤
+  │ Tool_Tip        │ The tip of the screwdriver bit itself, seen in      │
+  │                 │ frame. Used to measure offset between tool and      │
+  │                 │ screw for fine alignment correction.                │
+  └─────────────────┴─────────────────────────────────────────────────────┘
+
+  What the output looks like:
+    - Small tight bounding boxes around individual screws/holes/tool tip
+    - Box center coordinates used directly as servo targets
+    - In agent_node_v2.py, center is recalculated from box corners:
+        cx = int((x1 + x2) / 2), cy = int((y1 + y2) / 2)
+    - Confidence threshold: 0.4 (detections below this are ignored)
+
+  Label cleaning note:
+    The Roboflow source data had KEYPOINTS (exact screw center points) embedded
+    in the YOLO label files alongside the bounding box. The training notebook
+    strips these keypoints — keeping only the first 5 fields (class cx cy w h)
+    — because RF-DETR is a pure detection model and cannot use keypoint data.
+
+────────────────────────────────────────────────────────────────────────────────
+  3.3  PROJECT 3 — REFEREE (Classification, YOLO11n-cls)
+────────────────────────────────────────────────────────────────────────────────
+
+  Roboflow project : hdd_process_states (version 5)
+  Model            : YOLO11n classification (yolo11n-cls.pt base, fine-tuned)
+  Resolution       : 640px
+  Output format    : Single top-1 class prediction + confidence (no bounding box)
+
+  Number of classes: EXACTLY 2 — binary state
+
+  ┌──────────────┬──────────────────────────────────────────────────────────┐
+  │ Class        │ What it represents                                       │
+  ├──────────────┼──────────────────────────────────────────────────────────┤
+  │ Class 0      │ HDD in initial/assembled state (screws present)          │
+  ├──────────────┼──────────────────────────────────────────────────────────┤
+  │ Class 1      │ HDD in disassembled/partial state (screws removed)       │
+  └──────────────┴──────────────────────────────────────────────────────────┘
+
+  The Referee does not draw boxes. It looks at the entire frame and returns
+  a single verdict — which process state is the HDD currently in. This is
+  used by master_agent.py and groq_master_agent.py to decide whether to
+  proceed with more unscrewing or to call the flip/pickup skills.
+
+  Training dataset: 1225 total images → 979 train / 121 val / 125 test
+  Achieved accuracy: Top-1 = 1.0000 (100%), Top-5 = 1.0000 (100%)
+  This perfect score is expected given only 2 classes with visually
+  very distinct states.
+
+────────────────────────────────────────────────────────────────────────────────
+  3.4  SUMMARY — ARE DETECTION TYPES FIXED?
+────────────────────────────────────────────────────────────────────────────────
+
+  YES. All types are fixed and closed. The system:
+    - Cannot detect objects it was not trained on
+    - Cannot identify "unexpected defects" or anomalies
+    - Cannot generalise to new screw types without retraining
+    - Has exactly 14 + 3 + 2 = 19 total output classes across all three models
+
+  This is deliberate design — fixed-class detection is faster, more reliable,
+  and easier to verify in a production robotics cell than open-vocabulary
+  detection.
+
+
+================================================================================
+  SECTION 4 — Q3: IS NORMALIZATION IN PREPROCESSING?
+                    CAN WE SEE INTERMEDIATE VISUAL RESULTS?
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+  4.1  NORMALIZATION — WHERE IS IT AND IS IT APPLIED?
+────────────────────────────────────────────────────────────────────────────────
+
+  What the Roboflow UI shows (your screenshots):
+
+    GLOBAL CAMERA DATASET (Project 1 — hdd_global_scout):
+      Preprocessing:
+        - Auto-Orient: Applied
+        - Resize: Stretch to 1280×1280
+      Augmentations (7 outputs per image):
+        - Rotation: ±15°
+        - Shear: ±2° Horizontal and Vertical
+        - Hue: ±15°
+        - Saturation: ±25%
+        - Brightness: ±20%
+        - Mosaic: Applied
+
+    MICRO CAMERA DATASET (Project 2 — hdd_local_sniper):
+      Preprocessing:
+        - Auto-Orient: Applied
+        - Resize: Stretch to 640×640
+      Augmentations (7 outputs per image):
+        - Brightness: ±25%
+        - Exposure: ±15%
+        - Blur: Up to 1.5px
+        - Noise: Up to 1.96% of pixels
+
+  NORMALIZATION IS NOT LISTED IN ROBOFLOW'S PREPROCESSING STEPS.
+
+  This does NOT mean normalization is absent. Here is why:
+
+  Normalization is applied automatically by the model framework AFTER
+  Roboflow delivers the raw image data. It is not a Roboflow responsibility.
+
+    RF-DETR (both Large and Small):
+      Uses a standard ImageNet normalization inside its data loader:
+        mean = [0.485, 0.456, 0.406]   (per channel, RGB)
+        std  = [0.229, 0.224, 0.225]   (per channel, RGB)
+      Each pixel value is first divided by 255 to get [0.0, 1.0], then
+      shifted and scaled: pixel_norm = (pixel/255 - mean) / std
+      This happens inside rfdetr's internal transform pipeline before
+      the image is passed to the DINOv2 backbone encoder.
+
+    YOLO11n-cls (Referee):
+      Uses Ultralytics' built-in letterbox + normalize transform:
+        pixel_norm = pixel / 255.0   (simple scale to [0.0, 1.0])
+      No mean/std shift — YOLO uses direct 0-1 scaling.
+
+  WHAT EACH ROBOFLOW STEP ACTUALLY DOES:
+
+    Auto-Orient:
+      Reads the EXIF orientation tag from the JPEG and rotates/flips the
+      image to its correct upright orientation. Prevents images taken in
+      portrait mode appearing rotated in training. Applied before everything.
+
+    Resize: Stretch to 1280×1280 (global) / 640×640 (micro):
+      Forces all images to exactly the target square resolution by
+      STRETCHING (not padding/letterboxing). This means aspect ratio is NOT
+      preserved — the image is deformed to fit the square. This was chosen
+      because the Roboflow dataset images were already roughly square (HDDs
+      are roughly rectangular, viewed from above). Stretching avoids black
+      border padding that could confuse the model.
+
+────────────────────────────────────────────────────────────────────────────────
+  4.2  WHY DIFFERENT AUGMENTATIONS FOR GLOBAL VS MICRO?
+────────────────────────────────────────────────────────────────────────────────
+
+  GLOBAL CAMERA augmentations (rotation, shear, hue, saturation, mosaic):
+    - Rotation ±15°: The global camera may be mounted at a slight angle
+      or the HDD tray placed rotated. Model must handle slight tilts.
+    - Shear ±2°: Simulates small camera mounting imperfections.
+    - Hue/Saturation: The overhead lighting may vary in colour temperature
+      between sessions. Hue+Sat augmentation makes the model colour-robust.
+    - Brightness ±20%: Overhead lighting intensity variation.
+    - Mosaic: Combines 4 images into one training sample. Extremely effective
+      for multi-object detection — forces model to handle partial objects,
+      scale variation, and cluttered scenes simultaneously.
+
+  MICRO CAMERA augmentations (brightness, exposure, blur, noise):
+    - NO rotation/shear: The tool camera is rigidly mounted to the xArm5
+      end-effector — it always points straight down at the screw. Rotation
+      is not a real-world variation to train for.
+    - Brightness ±25% / Exposure ±15%: The LED ring light on the tool head
+      can vary in intensity. Screw heads under different lighting conditions
+      look very different (specular highlights shift).
+    - Blur up to 1.5px: The camera may be slightly out of focus at some
+      descent heights. Training with blur prevents failure during approach.
+    - Noise up to 1.96%: USB cameras produce grain noise at close range
+      under variable lighting. Noise augmentation prevents the model from
+      over-relying on sharp pixel gradients.
+    - NO mosaic: At 640px looking at 1-3 objects, mosaic would be harmful —
+      it would create unrealistic multi-screw compositions that don't match
+      what the tool camera actually sees.
+
+────────────────────────────────────────────────────────────────────────────────
+  4.3  CAN WE SEE INTERMEDIATE VISUAL RESULTS?
+────────────────────────────────────────────────────────────────────────────────
+
+  YES — in two contexts: during training and at runtime.
+
+  ── A. DURING TRAINING (in the Jupyter Notebooks) ──
+
+  Each notebook produces visual outputs at multiple stages:
+
+  Stage 1 — Ground Truth Verification (before training):
+    Both rfdetr-train notebooks use supervision (sv) library to render
+    bounding box overlays on raw training images:
+      box_annotator = sv.BoxAnnotator(thickness=2)
+      label_annotator = sv.LabelAnnotator()
+      annotated_image = box_annotator.annotate(image, annotations)
+      plt.imshow(cv2.cvtColor(annotated_image, cv2.COLOR_BGR2RGB))
+    This lets you visually confirm that the polygon→bbox conversion (Project 1)
+    or keypoint stripping (Project 2) produced correct clean bounding boxes
+    before wasting GPU time on training.
+
+  Stage 2 — Training Metric Curves (during/after training):
+    RF-DETR writes a log.txt file in JSON-lines format. The notebook parses
+    this and plots three subplots:
+      Plot 1: Bounding Box Loss (train_loss_bbox) vs epoch — blue line
+      Plot 2: Classification Loss (train_loss_ce) vs epoch — purple line
+      Plot 3: Bounding Box mAP 50-95 (test_coco_eval_bbox[0]) vs epoch — green
+    Additionally RF-DETR auto-generates metrics_plot.png which is displayed.
+    YOLO11 generates confusion_matrix.png and results.png automatically.
+
+  Stage 3 — Post-Training Inference Preview:
+    All three notebooks load the BEST WEIGHTS checkpoint and run inference
+    on a random test image, then display the result with supervision overlays:
+      - RF-DETR: loads checkpoint_best_ema.pth (EMA weights are more stable
+        than the raw checkpoint_best.pth)
+      - YOLO11: loads runs/classify/.../weights/best.pt
+      - Output shown with label + confidence score on each detection
+
+  Classification notebook also shows:
+    - One random image from each class side-by-side
+      (plt.subplot showing what "Class 0" and "Class 1" look like visually)
+    - Final inference result with "Referee Decision: <class> (conf)"
+
+  ── B. AT RUNTIME (ROS 2 Live System) ──
+
+  agent_node.py and agent_node_v2.py publish annotated debug images as
+  ROS 2 topics. These can be viewed live with rqt_image_view or RViz:
+
+    /vision/debug/scout_overlay     ← Scout bounding boxes on global frame
+    /vision/debug/sniper_overlay    ← Sniper boxes + crosshair on tool frame
+    /vision/debug/aruco_overlay     ← ArUco marker detections + IDs
+    /vision/agent_state             ← Full JSON state published at 30Hz
+
+  The agent_node_v2.py additionally renders:
+    - FPS counter overlaid on frame
+    - Crosshair at detected screw centre (offset -3, -10 pixels for calibration)
+    - Anchor ID labels on tracked objects (from StaticAnchorTracker)
+    - 3D coordinate labels (X,Y,Z in metres from depth projection)
+
+  So yes — you can always see intermediate visual results both during training
+  (matplotlib figures in the notebook) and at runtime (ROS 2 image topics).
+
+
+================================================================================
+  SECTION 5 — ROBOFLOW DATASET CONFIG: DETAILED PARAMETER BREAKDOWN
+================================================================================
+
+  ── GLOBAL CAMERA DATASET (hdd_global_scout v3) ──
+
+  Parameter              Value             What it means
+  ─────────────────────────────────────────────────────────────────────────
+  Auto-Orient            Applied           Corrects EXIF rotation tags so
+                                           all images appear upright.
+                                           Critical for phone/webcam footage.
+
+  Resize: Stretch        1280×1280         Forces square input. RF-DETR Large
+                                           requires resolution=1088 at train
+                                           time (nearest multiple of 32 to
+                                           1080). Roboflow stores at 1280
+                                           then the model resizes internally.
+                                           Stretch (not letterbox) used to
+                                           avoid black borders.
+
+  Outputs per example    7                 Each source image generates 7
+                                           augmented variants → 7× dataset
+                                           size. Helps with limited data.
+
+  Rotation ±15°          Applied           Simulates camera tilt and HDD
+                                           tray placement variation. Bounding
+                                           box coordinates are rotated with
+                                           the image automatically.
+
+  Shear ±2° H&V          Applied           Simulates lens distortion and
+                                           small perspective changes. Keeps
+                                           values small (±2°) to stay
+                                           physically realistic.
+
+  Hue ±15°               Applied           Shifts all colours around the
+                                           colour wheel. HDD metal surfaces
+                                           can appear with different tints
+                                           under different lighting setups.
+
+  Saturation ±25%        Applied           Varies colour intensity. Dull
+                                           vs. vivid same scene. Prevents
+                                           model relying on exact colour.
+
+  Brightness ±20%        Applied           Simulates overhead light intensity
+                                           changes (e.g. room lights on/off,
+                                           time of day variation).
+
+  Mosaic                 Applied           Combines 4 random images into a
+                                           2×2 grid as a single training
+                                           sample. Forces model to detect
+                                           objects at mixed scales and in
+                                           crowded/partial views.
+
+
+  ── MICRO CAMERA DATASET (hdd_local_sniper v3) ──
+
+  Parameter              Value             What it means
+  ─────────────────────────────────────────────────────────────────────────
+  Auto-Orient            Applied           Same as above — corrects rotation.
+
+  Resize: Stretch        640×640           RF-DETR Small uses resolution=640.
+                                           Close-up screw images are nearly
+                                           square already (short focal length,
+                                           centred subject).
+
+  Outputs per example    7                 Same 7× multiplier strategy.
+
+  Brightness ±25%        Applied           LED ring light on xArm5 tool head
+                                           varies. Screws at 1-5cm from camera
+                                           show extreme brightness variation.
+
+  Exposure ±15%          Applied           Simulates camera auto-exposure
+                                           differences between hardware setups
+                                           and USB camera exposure settings.
+
+  Blur up to 1.5px       Applied           The tool camera descends toward
+                                           the screw — at mid-heights it may
+                                           be slightly out of focus. Model
+                                           must still detect the screw head.
+
+  Noise up to 1.96%      Applied           USB cameras produce sensor noise,
+                                           especially at short exposure times
+                                           under dim lighting. 1.96% is
+                                           ~50/255 intensity noise (modest).
+
+
+  ── CLASSIFICATION DATASET (hdd_process_states v5) ──
+
+  Downloaded in "folder" format (class-name subfolders, no annotations).
+  Roboflow preprocessing applied at download time (not shown in UI screenshot):
+    - Images sorted into class folders: Class_0/, Class_1/
+    - Split: 80% train, 10% val, 10% test via splitfolders library
+    - 1225 total images → 979 train, 121 val, 125 test
+
+  YOLO11 training config (from notebook):
+    imgsz=640     : Input image size. 640px to resolve screw thread detail.
+    batch=32      : Large batch safe because classification is lightweight.
+    epochs=100    : With patience=30 (early stop if no improvement for 30).
+    device=0      : GPU training (NVIDIA RTX 4070 Laptop, 8GB VRAM).
+    patience=30   : Early stopping prevents overfitting.
+
+
+================================================================================
+  SECTION 6 — TRAINING PIPELINE: STEP-BY-STEP FOR ALL THREE PROJECTS
+================================================================================
+
+  ── PROJECT 1 — SCOUT (RF-DETR Large, Global Camera) ──
+
+  Step 1: Download dataset from Roboflow
+    rf.workspace("hard-drive").project("hdd_global_scout").version(3).download("yolov8")
+    Format: YOLOv8 (because the labels were originally polygon segmentation
+    annotations in YOLO polygon format)
+
+  Step 2: Convert polygon annotations → bounding boxes
+    For each label file:
+      - Read all polygon vertices (interleaved x,y pairs after class_id)
+      - Find min/max X and min/max Y across all polygon vertices
+      - Compute cx = (minX+maxX)/2, cy = (minY+maxY)/2, w = maxX-minX, h = maxY-minY
+      - Write new label: "class_id cx cy w h" (standard YOLO bbox format)
+    This conversion loses polygon detail but creates clean bbox labels for
+    RF-DETR which is an object detector, not an instance segmenter.
+
+  Step 3: Manual 80/10/10 split (random.seed(42) for reproducibility)
+    80% → train/images + train/labels
+    10% → valid/images + valid/labels
+    10% → test/images  + test/labels
+
+  Step 4: Patch data.yaml
+    Overwrite train/val/test paths to relative paths RF-DETR expects.
+
+  Step 5: Train RF-DETR Large
+    model = RFDETRLarge()
+    model.train(
+        dataset_dir = OUTPUT_DIR,
+        output_dir  = "runs/train/rfdetr_box_1088",
+        epochs      = 100,
+        batch_size  = 2,              ← VRAM-safe for 8GB GPU
+        grad_accum_steps = 8,         ← Simulates effective batch of 16 (2×8)
+        resolution  = 1088            ← Nearest 32-multiple to 1080
+    )
+
+  Step 6: Evaluate
+    Parse log.txt JSON lines → best mAP 50-95 = 0.8170 (81.70%)
+
+  Step 7: Load best weights and run inference preview
+    weights = "runs/train/rfdetr_box_1088/checkpoint_best_ema.pth"
+    model = RFDETRLarge(pretrain_weights=weights, resolution=1088)
+
+
+  ── PROJECT 2 — SNIPER (RF-DETR Small, Micro Camera) ──
+
+  Step 1: Download dataset
+    rf.workspace("hard-drive").project("hdd_local_sniper").version(3).download("yolov8")
+    Labels have keypoints embedded (screw centre points) in addition to bbox.
+
+  Step 2: Strip keypoints from labels
+    For each label line, keep ONLY the first 5 fields: class cx cy w h
+    This removes the embedded keypoint coordinates that RF-DETR cannot use.
+    (Hole class has no keypoints to strip — it is already clean bbox format.)
+
+  Step 3: Manual 80/10/10 split (same random.seed(42) approach)
+
+  Step 4: Patch data.yaml (same approach as Project 1)
+
+  Step 5: Train RF-DETR Small
+    model = RFDETRSmall()
+    model.train(
+        dataset_dir = OUTPUT_DIR,
+        output_dir  = "runs/train/rfdetr_box_640",
+        epochs      = 100,
+        batch_size  = 4,              ← Larger batch possible (smaller model)
+        resolution  = 640             ← Matches inference resolution exactly
+    )
+    Note: No grad_accum_steps here — batch 4 at 640px fits directly in 8GB.
+
+  Step 6: Evaluate
+    Best mAP 50-95 = 0.9387 (93.87%) — higher than Scout because 3 classes
+    is a simpler problem than 14 classes, and 640px close-up views are cleaner.
+
+  Step 7: Load best weights and inference preview
+    weights = "runs/train/rfdetr_box_640/checkpoint_best_ema.pth"
+    model = RFDETRSmall(pretrain_weights=weights, resolution=640)
+
+
+  ── PROJECT 3 — REFEREE (YOLO11n-cls, Classification) ──
+
+  Step 1: Download dataset in "folder" format
+    rf.workspace("hard-drive").project("hdd_process_states").version(5).download("folder")
+    Roboflow delivers images already sorted into class-named subfolders.
+
+  Step 2: Split into train/val/test using splitfolders
+    splitfolders.ratio(DATA_PATH/train, output=OUTPUT_DIR, seed=42, ratio=(0.8,0.1,0.1))
+    Result: dataset_cls_split/train/<class>/ + val/<class>/ + test/<class>/
+
+  Step 3: Visualise one random image per class
+    Side-by-side matplotlib subplots to visually confirm class separation.
+
+  Step 4: Train YOLO11n classification
+    model = YOLO("yolo11n-cls.pt")   ← Start from COCO-pretrained weights
+    model.train(
+        data    = OUTPUT_DIR,
+        epochs  = 100,
+        imgsz   = 640,
+        batch   = 32,
+        device  = 0,
+        patience= 30,
+        project = "HDD_Disassembly",
+        name    = "YOLO11_Referee_Cls"
+    )
+
+  Step 5: Validate
+    best_model = YOLO("runs/.../weights/best.pt")
+    best_model.val()
+    → Top-1: 1.0000, Top-5: 1.0000 (perfect on 2 classes)
+
+  Step 6: Inference preview
+    Shows "Referee Decision: <class_name> (confidence)" on a test image.
+
+
+================================================================================
+  SECTION 7 — ACHIEVED MODEL PERFORMANCE
+================================================================================
+
+  ┌────────────────────┬────────────────┬──────────────────────────────────┐
+  │ Model              │ Metric         │ Value                            │
+  ├────────────────────┼────────────────┼──────────────────────────────────┤
+  │ Scout (RF-DETR L)  │ mAP 50-95      │ 0.8170  (81.70%)                │
+  │                    │ Classes        │ 14 HDD component classes         │
+  │                    │ Resolution     │ 1088px                           │
+  │                    │ Hardware       │ RTX 4070 Laptop (8GB VRAM)       │
+  ├────────────────────┼────────────────┼──────────────────────────────────┤
+  │ Sniper (RF-DETR S) │ mAP 50-95      │ 0.9387  (93.87%)                │
+  │                    │ Classes        │ 3: Hole, Screw_Head, Tool_Tip    │
+  │                    │ Resolution     │ 640px                            │
+  │                    │ Hardware       │ RTX 4070 Laptop (8GB VRAM)       │
+  ├────────────────────┼────────────────┼──────────────────────────────────┤
+  │ Referee (YOLO11n)  │ Top-1 Accuracy │ 1.0000  (100.00%)               │
+  │                    │ Top-5 Accuracy │ 1.0000  (100.00%)               │
+  │                    │ Classes        │ 2: process state binary          │
+  │                    │ Training imgs  │ 979 (from 1225 total)            │
+  │                    │ Val imgs       │ 121                              │
+  │                    │ Test imgs      │ 125                              │
+  └────────────────────┴────────────────┴──────────────────────────────────┘
+
+  Why Sniper outperforms Scout:
+    - 3 classes vs 14 classes (simpler discrimination task)
+    - Close-up camera provides high-detail, low-clutter images
+    - Screw heads are visually very distinctive at 640px close range
+    - Less intra-class variation (all screws of same type on same HDD)
+
+  Why Referee is perfect:
+    - Only 2 binary states — visually very different from each other
+    - 1225 images is adequate for this difficulty level
+    - YOLO11n classification head is well-suited for 2-class tasks
+    - Perfect accuracy expected; would be a concern if it weren't.
+
+
+================================================================================
+  END OF DOCUMENT
+  File: VISION_TRAINING_ANALYSIS.txt
+  Location: /home/adip/workspace/dev_ws/src/disassembly_pipeline/
+================================================================================

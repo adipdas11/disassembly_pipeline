@@ -4,11 +4,12 @@ HDD Disassembly Script — Pure state-machine, no LLM.
 
 Flow:
   1. Subscribe to vision, wait for detections
-  2. Hold the HDD chassis
-  3. Unscrew up to 2 screws
-  4. Pickup PCB main
-  5. Re-hold chassis → flip
-  6. Done
+  2. Ask operator before each major action
+  3. Hold the HDD chassis
+  4. Unscrew up to 2 screws
+  5. Flip-drop loose parts
+  6. Flip to expose the back side
+  7. Done
 """
 import rclpy
 from rclpy.node import Node
@@ -18,7 +19,7 @@ import json, time, threading, math, copy
 
 from disassembly_skills.object_hold_skill import ObjectHoldSkill
 from disassembly_skills.object_flip_skill import ObjectFlipSkill
-from disassembly_skills.object_pickup_skill import PickupSkill
+from disassembly_skills.object_flip_drop_skill import FlipDropSkill
 from disassembly_skills.unscrew_skill import UnscrewSkill
 
 
@@ -29,7 +30,7 @@ class HDDDisassemblyScript(Node):
         # ── Skill nodes (added to executor separately) ──────────────────
         self.hold_skill    = ObjectHoldSkill()
         self.flip_skill    = ObjectFlipSkill()
-        self.pickup_skill  = PickupSkill()
+        self.flip_drop_skill = FlipDropSkill()
         self.unscrew_skill = UnscrewSkill()
 
         # ── Vision state ────────────────────────────────────────────────
@@ -79,11 +80,43 @@ class HDDDisassemblyScript(Node):
     def find_chassis(self, objects):
         return self.find_by_keywords(objects, ["hdd", "chassis", "lid"])
 
-    def find_pcb(self, objects):
-        return self.find_by_keywords(objects, ["pcb"])
-
     def find_screws(self, objects):
         return self.find_by_keywords(objects, ["screw"])
+
+    def operator_gate(self, step_name, next_action, allow_skip=True):
+        """Ask the operator whether to run, skip, or stop before a major step."""
+        print("\n" + "-" * 60)
+        print(f"NEXT ACTION: {step_name}")
+        print(f"  {next_action}")
+        if not allow_skip:
+            prompt = "Press Enter/r to run, or q to quit: "
+            valid = {"", "r", "run", "q", "quit", "exit"}
+            invalid_msg = "  Invalid input. Use Enter/r or q."
+        else:
+            prompt = "Press Enter/r to run, s to skip, or q to quit: "
+            valid = {"", "r", "run", "s", "skip", "q", "quit", "exit"}
+            invalid_msg = "  Invalid input. Use Enter/r, s, or q."
+
+        while rclpy.ok():
+            choice = input(prompt).strip().lower()
+            if choice in valid:
+                if choice in {"q", "quit", "exit"}:
+                    return "quit"
+                if choice in {"s", "skip"}:
+                    print(f"  Skipping: {step_name}")
+                    return "skip"
+                return "run"
+            print(invalid_msg)
+        return "quit"
+
+    def run_or_skip(self, step_name, next_action, step_fn, allow_skip=True):
+        decision = self.operator_gate(step_name, next_action, allow_skip=allow_skip)
+        if decision == "quit":
+            print("\nSTOP: Operator requested stop.")
+            return "quit", None
+        if decision == "skip":
+            return "skip", None
+        return "run", step_fn()
 
     def step_hold_chassis(self):
         """Find and hold the HDD chassis or top lid."""
@@ -118,19 +151,23 @@ class HDDDisassemblyScript(Node):
         print("  Could not hold chassis after 3 attempts.")
         return False
 
-    def step_unscrew(self, max_screws=2):
+    def step_unscrew(self, max_screws=2, interactive=True):
         """Unscrew up to max_screws visible screws."""
         print("\n" + "=" * 60)
         print(f"STEP: UNSCREW (max {max_screws})")
         print("=" * 60)
 
         screws_removed = 0
+        skipped_screw_ids = set()
         for i in range(max_screws):
             self.vision_reset_pub.publish(String(data='reset'))
             time.sleep(2.0)
             self.wait_for_vision()
             objects = self.get_objects()
-            screws = self.find_screws(objects)
+            screws = [
+                screw for screw in self.find_screws(objects)
+                if screw.get("id") not in skipped_screw_ids
+            ]
 
             if not screws:
                 print(f"  No screws detected. {screws_removed} removed total.")
@@ -138,6 +175,21 @@ class HDDDisassemblyScript(Node):
 
             target = screws[0]
             tid, tlabel = target.get("id"), target.get("label", "screw")
+            print(f"  Candidate screw: {tlabel} (ID: {tid}) — screw {i+1}/{max_screws}")
+
+            if interactive:
+                decision = self.operator_gate(
+                    f"Unscrew {tlabel} (ID: {tid})",
+                    "Run the xArm screwdriver alignment, extraction, and bin drop for this screw.",
+                )
+                if decision == "quit":
+                    print("\nSTOP: Operator requested stop.")
+                    return "quit"
+                if decision == "skip":
+                    skipped_screw_ids.add(tid)
+                    print(f"  Skipped screw ID {tid}. Moving to next screw check.")
+                    continue
+
             print(f"  Unscrewing: {tlabel} (ID: {tid}) — screw {i+1}/{max_screws}")
 
             success = self.unscrew_skill.execute_unscrew_command(
@@ -152,48 +204,14 @@ class HDDDisassemblyScript(Node):
         print(f"  Unscrew step complete: {screws_removed}/{max_screws} removed.")
         return screws_removed > 0
 
-    def step_pickup_pcb(self):
-        """Pick up the PCB main and verify it's no longer visible."""
+    def step_flip_drop(self):
+        """Flip/drop loose parts, then re-grasp the chassis."""
         print("\n" + "=" * 60)
-        print("STEP: PICKUP PCB MAIN")
+        print("STEP: FLIP-DROP LOOSE PARTS")
         print("=" * 60)
+        return self.flip_drop_skill.execute_flip_drop(interactive=False)
 
-        MAX_RETRIES = 3
-        for attempt in range(MAX_RETRIES):
-            self.wait_for_vision()
-            objects = self.get_objects()
-            pcbs = self.find_pcb(objects)
-
-            if not pcbs:
-                print("  No PCB detected — already removed or not present.")
-                return True
-
-            target = pcbs[0]
-            tid, tlabel = target.get("id"), target.get("label", "unknown")
-            print(f"  Picking up: {tlabel} (ID: {tid}) — attempt {attempt+1}/{MAX_RETRIES}")
-
-            self.pickup_skill.execute_pickup(
-                target_id=tid, target_label=tlabel
-            )
-
-            # ── Verify removal in vision ────────────────────────────────
-            print("  Verifying removal in vision...")
-            time.sleep(2.0)
-            self.wait_for_vision()
-            objects_after = self.get_objects()
-            pcbs_after = self.find_pcb(objects_after)
-
-            if not pcbs_after:
-                print("  PCB removed successfully — not visible in vision.")
-                return True
-            else:
-                print(f"  PCB still detected ({len(pcbs_after)} found). Retrying pickup...")
-                time.sleep(1.0)
-
-        print(f"  Could not remove PCB after {MAX_RETRIES} attempts.")
-        return False
-
-    def run(self):
+    def run(self, interactive=True):
         print("\n" + "#" * 60)
         print("#  HDD DISASSEMBLY SCRIPT — START")
         print("#" * 60)
@@ -213,30 +231,71 @@ class HDDDisassemblyScript(Node):
         time.sleep(1.0)
 
         # ── 1. Hold HDD Chassis ─────────────────────────────────────────
-        if not self.step_hold_chassis():
+        if interactive:
+            status, hold_ok = self.run_or_skip(
+                "Hold chassis/lid",
+                "Find the HDD chassis or lid in vision and secure it with the UF850 gripper.",
+                self.step_hold_chassis,
+            )
+            if status == "quit":
+                return
+            if status == "skip":
+                hold_ok = True
+        else:
+            hold_ok = self.step_hold_chassis()
+
+        if not hold_ok:
             print("\nABORT: Failed to hold chassis.")
             return
 
         # ── 2. Unscrew up to 2 screws ──────────────────────────────────
-        self.step_unscrew(max_screws=2)
+        if interactive:
+            status, _ = self.run_or_skip(
+                "Unscrew visible screws",
+                "Start screw processing. The script will ask again before each individual screw.",
+                lambda: self.step_unscrew(max_screws=2, interactive=True),
+            )
+            if status == "quit":
+                return
+            if _ == "quit":
+                return
+        else:
+            self.step_unscrew(max_screws=2, interactive=False)
 
-        # ── 3. Pickup PCB Main ──────────────────────────────────────────
-        if not self.step_pickup_pcb():
-            print("\nPCB pickup failed, but continuing...")
+        # ── 3. Flip-drop loose parts ────────────────────────────────────
+        if interactive:
+            status, flip_drop_ok = self.run_or_skip(
+                "Flip-drop loose parts",
+                "Flip the held chassis in the drop zone, dump loose parts, and re-grasp the chassis.",
+                self.step_flip_drop,
+            )
+            if status == "quit":
+                return
+            if status == "skip":
+                flip_drop_ok = True
+        else:
+            flip_drop_ok = self.step_flip_drop()
 
-        # ── 4. Hold HDD Chassis Again (pickup releases gripper) ─────────
-        print("\nRe-stabilizing chassis for flip...")
-        if not self.step_hold_chassis():
-            print("\nABORT: Failed to re-hold chassis.")
+        if not flip_drop_ok:
+            print("\nABORT: Flip-drop failed. Not continuing to backside flip.")
             return
 
-        # ── 5. Flip ─────────────────────────────────────────────────────
-        print("\nExecuting Flip...")
-        success = self.flip_skill.execute_flip(interactive=False)
-        if success:
-            print("Flip successful.")
+        # ── 4. Flip to expose back side ─────────────────────────────────
+        if interactive:
+            status, success = self.run_or_skip(
+                "Flip chassis to back side",
+                "Lift the held chassis, rotate it 180 degrees, descend, release, and re-grasp to expose the back side.",
+                lambda: self.flip_skill.execute_flip(interactive=False),
+            )
+            if status == "quit":
+                return
+            if status == "skip":
+                success = True
         else:
-            print("Flip failed.")
+            print("\nExecuting Flip...")
+            success = self.flip_skill.execute_flip(interactive=False)
+
+        print("Flip successful." if success else "Flip failed.")
 
         print("\n" + "#" * 60)
         print("#  HDD DISASSEMBLY SCRIPT — COMPLETE")
@@ -251,7 +310,7 @@ def main(args=None):
     executor.add_node(node)
     executor.add_node(node.hold_skill)
     executor.add_node(node.flip_skill)
-    executor.add_node(node.pickup_skill)
+    executor.add_node(node.flip_drop_skill)
     executor.add_node(node.unscrew_skill)
 
     spin_thread = threading.Thread(target=executor.spin, daemon=True)

@@ -12,25 +12,24 @@ def generate_launch_description():
     # --- 2. DEFINE LAUNCH ACTIONS ---
     
     # A. RealSense (Global Scout)
-    # Keeping the necessary parameters for PointCloud and Depth synchronization
+    # Use the same RealSense arguments as the manually verified working command.
     launch_realsense = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([rs_pkg, '/launch/rs_launch.py']),
         launch_arguments={
             'pointcloud.enable': 'true',
             'align_depth.enable': 'true',
-            'pointcloud.stream_filter': '2', # Texture from Color
-            'pointcloud.allow_no_texture_points': 'true',
-            'pointcloud.ordered_pc': 'true',
             'enable_color': 'true',
             'enable_depth': 'true',
             'enable_sync': 'true',
-            'tf_publish_rate': '10.0',
         }.items()
     )
 
     # B. Tool Camera (Local Sniper)
     launch_tool_cam = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([tool_pkg, '/launch/tool_camera.launch.py'])
+        PythonLaunchDescriptionSource([tool_pkg, '/launch/tool_camera.launch.py']),
+        launch_arguments={
+            'video_device': '/dev/video14',
+        }.items()
     )
 
     # C. Vision Agent (Brain)
@@ -40,7 +39,6 @@ def generate_launch_description():
 
     # --- 3. CREATE STARTUP SEQUENCE WITH LOGS ---
     return LaunchDescription([
-        
         # T+0: Start RealSense
         LogInfo(msg="🚀 [1/3] INITIALIZING GLOBAL SCOUT (REALSENSE)... 📷"),
         launch_realsense,

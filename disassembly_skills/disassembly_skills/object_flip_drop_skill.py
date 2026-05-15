@@ -53,7 +53,7 @@ class FlipDropSkill(Node):
         self.TORQUE_THRESHOLD = 3.0            
         self.DESCENT_SPEED = 0.2              # Reduced for safety
         self.RETRACT_VELOCITY = 0.5            # Synced with Flip Skill
-        self.GRIPPER_CLOSE_FORCE_N = 100.0     # Synced with Flip Skill
+        self.GRIPPER_CLOSE_FORCE_N = 120.0
         self.GRIPPER_OPEN_FORCE_N = 40.0
         
         self.get_logger().info("🚀 Flip-Drop Skill: Modernized Production Version.")
